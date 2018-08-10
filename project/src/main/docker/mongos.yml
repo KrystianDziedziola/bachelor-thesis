@@ -1,0 +1,2 @@
+sharding:
+  configDB: mongo-config/mongo-config:27018

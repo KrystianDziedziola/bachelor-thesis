@@ -1,0 +1,73 @@
+\chapter{Wstêp}
+
+\section{Wprowadzenie}
+SQL (ang. \textit{Structured Query Language}) to standard opracowany w latach 60. przez firmê IBM, s³u¿¹cy do komunikacji z serwerami relacyjnych baz danych.
+Sta³ siê on bardzo popularny i jest u¿ywany do dnia dzisiejszego.
+Ze wzglêdu na jêzyk, który jest u¿ywany do komunikacji, relacyjne bazy danych zwane s¹ czêsto bazami SQL.
+
+W informatyce na przestrzeni lat powsta³o wiele nowych technologii, jêzyków, architektur oraz platform, jednak jedna rzecz pozostawa³a niezmienna - je¿eli istnieje potrzeba sk³adowania danych, najczêœciej u¿ywana jest relacyjna baza danych.
+Do niedawna wybór ogranicza³ siê do tego, której bazy typu SQL u¿yæ.
+Dopiero w XXI wieku popularnoœæ zacz¹³ zyskiwaæ inny typ baz danych okreœlany mianem NoSQL.
+
+Bazy danych typu NoSQL istnia³y ju¿ o wiele wczeœniej, jednak sta³y siê popularne dopiero niedawno.
+Ze wzglêdu na to, ¿e dostêp do internetu sta³ siê znacznie bardziej powszechny, generowany jest coraz to wiêkszy ruch w sieci oraz przesy³anych jest o wiele wiêcej informacji.
+Wiele aplikacji internetowych potrzebuje przetwarzaæ olbrzymie iloœci danych, co okazuje siê wyzwaniem dla tradycyjnych baz SQL.
+Zaczêto szukaæ narzêdzi rozwi¹zuj¹cych problemy, którymi dotkniête s¹ bazy relacyjne.
+
+To w³aœnie bazy NoSQL przedstawiane s¹ jako alternatywa dla tradycyjnych, relacyjnych baz danych. 
+Z za³o¿enia s¹ one odpowiedzi¹ na niedoskona³oœci baz SQL.
+
+Czy oznacza to, ¿e bazy NoSQL s¹ pod ka¿dym wzglêdem lepsze od SQL? 
+Czy relacyjne bazy danych strac¹ wkrótce swoj¹ popularnoœæ na rzecz nowego rozwi¹zania?
+Odpowiedzi na te pytania zostan¹ udzielone w rozdziale \ref{chapter_2} przedstawiaj¹cym najwa¿niejsze informacje dotycz¹ce nierelacyjnych baz danych.
+
+\section{Cel i zakres pracy}
+Celem pracy jest odpowiedŸ na pytanie czy bazy NoSQL s¹ w stanie zast¹piæ relacyjne bazy SQL.
+Dodatkowo praca jest swoist¹ baz¹ wiedzy na temat baz danych NoSQL.
+Wszystkie informacje przedstawione s¹ w sposób umo¿liwiaj¹cy osobie nie znaj¹cej tematyki NoSQL pe³ne zrozumienie
+treœci pracy oraz zdobycie wiedzy na podstawie opisanych zagadnieñ.
+
+Omówione zosta³y równie¿ praktyczne zastosowania baz NoSQL w aplikacjach napisanych w jêzyku Java z wykorzystaniem biblioteki Spring.
+
+Zakres pracy, to przede wszystkim:
+\begin{itemize}
+\item charakterystyka ró¿nych typów nierelacyjnych baz danych,
+\item porównanie baz danych NoSQL do SQL,
+\item przedstawienie sposobu u¿ycia i zarz¹dzania bazami NoSQL,
+\item zaprezentowanie architektury aplikacji, w której bazy NoSQL przynosz¹ znacz¹ce korzyœci,
+\item przeprowadzenie testów wydajnoœciowych potwierdzaj¹cych s³usznoœæ proponowanego rozwi¹zania.
+\end{itemize}
+
+
+\section{Przegl¹d literatury}
+Czêœæ pracy dotycz¹ca teoretycznych pojêæ zwi¹zanych z bazami NoSQL zosta³a oparta g³ównie na pozycjach obszernie opisuj¹cych tê tematykê.
+W szczególnoœci s¹ to \cite{Fowler:2013}, \cite{Strauch:2010} oraz \cite{Zollmann:2012}.
+
+Druga czêœæ pracy mówi¹ca o praktycznym zastosowaniu baz NoSQL razem z bazami relacyjnymi zosta³a napisana dziêki wiedzy pozyskanej z literatury na temat architektury CQRS oraz bazie danych MongoDB. 
+Pozycje wykorzystywane w najwiêkszym stopniu, to \cite{Young:2010}, \cite{cqrs:2016} oraz \cite{sharding:2017}.
+
+\section{Struktura pracy}
+Tekst pracy podzielony zosta³ na dwie zasadnicze czêœci.
+Pierwsz¹ z nich stanowi rozdzia³ \ref{chapter_2}, w którym zawarte s¹ podstawowe informacje na temat nierelacyjnych baz danych.
+W szczególnoœci jest to:
+\begin{itemize}
+\item przedstawienie definicji oraz pochodzenia pojêcia NoSQL,
+\item charakterystyka oraz przyczyny powstania baz nierelacyjnych,
+\item w³aœciwoœci baz NoSQL,
+\item porównanie NoSQL do baz relacyjnych,
+\item przedstawienie ró¿nych rodzajów baz nierelacyjnych,
+\item omówienie wad baz NoSQL.
+\end{itemize}
+
+Drug¹ i zarazem najwa¿niejsz¹ czêœci¹ tekstu pracy jest rozdzia³ \ref{chapter_3}, w którym opisane zosta³o zastosowanie nierelacyjnych baz danych wykorzystuj¹c architekturê CQRS.
+Stworzona zosta³a przyk³adowa aplikacja webowa emituj¹ca sklep internetowy, na podstawie której omówione zosta³y zagadnienia takie jak:
+\begin{itemize}
+\item tworzenie aplikacji w oparciu o architekturê CQRS,
+\item technologie wykorzystywane do tworzenia aplikacji webowych,
+\item sposób komunikacji z aplikacj¹,
+\item model danych,
+\item konfiguracja aplikacji,
+\item automatyzacja tworzenia œrodowiska uruchomieniowego aplikacji,
+\item skalowanie bazy danych MongoDB,
+\item testy wydajnoœciowe.
+\end{itemize}

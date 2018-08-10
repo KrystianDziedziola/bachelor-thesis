@@ -1,0 +1,1900 @@
+\chapter{Architektura aplikacji wykorzystuj¹ca oba typy baz danych}
+\label{chapter_3}
+W tym rozdziale zostanie przedstawiona przyk³adowa aplikacja, która przewiduje wykorzystanie dwóch typów baz danych.
+Na jej podstawie bêdzie mo¿na zilustrowaæ:
+\begin{itemize}
+\item implementacjê aplikacji w oparciu o architekturê CQRS,
+\item prosty sposób uruchamiania ca³ego systemu - aplikacji oraz wielu instancji baz danych,
+\item zarz¹dzanie bazami danych oraz ich skalowanie,
+\item przeprowadzanie testów wydajnoœciowych aplikacji.
+\end{itemize}
+
+\section{Architektura CQRS}
+\subsection{CQS jako zacz¹tek CQRS}
+Pojêcia CQS (ang. \textit{Command Query Separation}) zosta³o przedstawione przez Bertranda Meyera ju¿ w 1986 roku \cite{cqrs:2016}.
+Jest to zasada mówi¹ca o tym, ¿e w systemie powinny istnieæ jedynie metody, które mo¿na zaklasyfikowaæ do jednej z dwóch grup.
+S¹ to:
+
+\begin{itemize}
+\item \textbf{Komendy} (ang. \textit{Command}) - metody zmieniaj¹ce stan aplikacji, które nie zwracaj¹ ¿adnej wartoœci,
+\item \textbf{Kwerendy} (ang. \textit{Query}) - metody zwracaj¹ce pewn¹ wartoœæ, jednak nie zmieniaj¹ce stanu aplikacji.
+S¹ one idempotentne (ang. \textit{Idempotence}), czyli niezale¿nie od tego ile razy zostan¹ wykonane, zawsze zwróc¹ ten sam wynik.
+Ideê tego typu metod dobrze obrazuje zdanie: ``Pytanie nie powinno zmieniaæ odpowiedzi''. 
+\end{itemize}
+
+\subsection{Klasyczny CQRS}
+\label{cqrs} 
+Po blisko 20 latach od sformu³owania terminu CQS, Greg Young oraz Udi Dahan przedstawili koncepcjê CQRS (ang. \textit{Command Query Responsibility Segregation}), która wywodzi³a siê bezpoœrednio z CQS \cite{cqrs:2016}.
+
+Za³o¿enia s¹ te same, jednak zmianie ulega skala problemu.
+W przypadku CQS mowa jest o podziale poszczególnych metod, natomiast CQRS zak³ada taki podzia³ na poziomie klas, a nawet ca³ej aplikacji. 
+Oznacza to, ¿e aplikacja bêdzie dzieliæ siê na dwa osobne serwisy - pierwszy odpowiedzialny za modyfikacjê stanu aplikacji i jego zapis (zwany \textit{Command}) oraz drugi odpowiedzialny jedynie za odczyt jej stanu (o nazwie \textit{Query}).
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=12cm]{Rysunki/Rozdzial3/CQRS_single_db.pdf}
+	\caption{Architektura CQRS z pojedyncz¹ baz¹ danych}
+	\label{fig:CQRS_single_db}
+\end{figure}
+
+Aplikacja stworzona wed³ug architektury przedstawionej na rysunku \ref{fig:CQRS_single_db} u¿ywa jednej bazy danych.
+Zastosowanie tej architektury pomaga w uporz¹dkowaniu aplikacji, co przyczyni siê do zmniejszenia iloœci potencjalnych b³êdów oraz umo¿liwia stworzenie osobnego modelu dla obu warstw, co pozwoli w bardziej naturalny sposób odzwierciedliæ logikê biznesow¹ aplikacji.
+Mo¿na tu u¿yæ zarówno bazy relacyjnej jak i NoSQL, jednak ¿adna z nich nie bêdzie w pe³ni przystosowana do przetwarzania zarówno operacji po stronie \textit{Query} jak i \textit{Command}.
+
+Rozwi¹zaniem jest u¿ycie obu typów baz danych. Podejœcie to nosi angielsk¹ nazwê \textit{Polyglot persistence}.
+
+\subsection{U¿ycie w CQRS ró¿nych typów baz danych}
+Greg Young przeanalizowa³ obie te strony pod k¹tem takich kryteriów jak spójnoœæ danych (ang. \textit{Consistency}), sposób przechowywania danych (ang. \textit{Data storage}) oraz skalowalnoœæ (ang. \textit{Scalability})\cite{Young:2010}. 
+
+Wyniki tej analizy wygl¹daj¹ nastêpuj¹co:
+
+\subsubsection{Spójnoœæ danych}
+\textbf{Command}: Przetwarzanie transakcji, czyli wprowadzanie zmian do systemu jest o wiele prostsze i bardziej wiarygodne, je¿eli obs³ugiwane dane s¹ zawsze spójne. 
+W tej czêœci aplikacji niespójne dane wymagaj¹ przewidzenia i obs³u¿enia wielu przypadków wynikaj¹cych z braku pewnoœci czy dane s¹ zawsze aktualne.
+
+\textbf{Query}: Przy odczycie danych mog¹ byæ one warunkowo spójne (\textit{Eventual consistency} \ref{eventual_consistency}), gdy¿ pobranie nieaktualnych danych, które i tak za chwile bêd¹ aktualne w wiêkszoœci przypadków nie stanowi wiêkszego problemu.
+
+\subsubsection{Sposób przechowywania danych}
+\textbf{Command}: Ta czêœæ aplikacji powinna zapisywaæ dane w œciœle okreœlonej formie, która odpowiada sztywno zdefiniowanemu schematowi np. tabele. 
+Jest to wymagane ze wzglêdu na to, aby zapisywane dane mia³y poprawn¹ strukturê oraz nie ulega³y duplikacji.
+
+\textbf{Query}: Odczyt danych jest bardziej wydajny w sytuacji, gdy dane s¹ przechowywane w postaci mniej uporz¹dkowanych struktur, które nie wymagaj¹ dodatkowych operacji takich jak np. ³¹czenie danych (ang. \textit{join}).
+Dopuszcza siê duplikacjê danych na rzecz znacznie zwiêkszonej wydajnoœci.
+
+\subsubsection{Skalowalnoœæ}
+\textbf{Command}: W wiêkszoœci systemów (szczególnie webowych) strona ta przetwarza stosunkowo niewielk¹ iloœæ operacji w porównaniu do operacji odczytu.
+W zwi¹zku z tym skalowanie w tej czêœci aplikacji przewa¿nie nie jest potrzebne.
+
+\textbf{Query}: Wiêkszoœæ systemów webowych przetwarza o wiele wiêcej operacji odczytu, ni¿ zapisu.
+Czêsto s¹ to tak du¿e iloœci, ¿e skalowanie po tej stronie jest niezbêdne.
+
+\subsubsection{Wnioski}
+Nie jest mo¿liwe stworzenie jednego modelu, który bêdzie w stanie optymalnie przetwarzaæ tak ró¿ne operacje jak wyszukiwanie, odczyt oraz przetwarzanie danych i ich zapis.
+ 
+Z powy¿szej analizy mo¿na wywnioskowaæ, ¿e do czêœci \textit{Command} s³u¿¹cej do zapisu najlepiej nadaje siê relacyjna baza danych, gdy¿ pozwala na przetwarzanie danych w transakcjach, przechowuje je w uporz¹dkowanej strukturze oraz nie wymaga skalowalnoœci.
+
+Natomiast po stronie \textit{Query} op³acalne jest u¿ycie baz typu NoSQL, gdy¿ warunkowa spójnoœæ nie jest problemem, przechowywanie danych w nieuporz¹dkowanej strukturze jest tutaj atutem oraz umo¿liwiaj¹ ³atw¹ skalowalnoœæ.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=12cm]{Rysunki/Rozdzial3/CQRS_polyglot.pdf}
+	\caption{Architektura CQRS z dwoma typami baz danych}
+	\label{fig:CQRS_polyglot}
+\end{figure}
+
+W architekturze zaprezentowanej na rysunku \ref{fig:CQRS_polyglot} dane s¹ zapisywane do relacyjnej bazy danych, natomiast odczytywane z bazy NoSQL. Po ka¿dej zmianie dane s¹ synchronizowane pomiêdzy obiema bazami danych.
+
+Zalet¹ tego podejœcia jest przede wszystkim mo¿liwoœæ niezale¿nego skalowania operacji odczytu i zapisu.
+W klasycznym podejœciu do CQRS, gdzie u¿ywana jest jedna baza danych skalowaniu mog¹ byæ poddane jedynie obie strony jednoczeœnie.
+Tutaj mamy mo¿liwoœæ zwiêkszania wydajnoœci jedynie w miejscach, gdzie rzeczywiœcie wystêpuje z ni¹ problem.
+
+W kolejnych rozdzia³ach zostanie opisana przyk³adowa aplikacja wykorzystuj¹ca oba typy baz danych stworzona w oparciu o architekturê CQRS.
+Zostanie przedstawione, w jaki sposób przebiega implementacja tego typu aplikacji, jak w prosty sposób skalowaæ bazy danych w celu zwiêkszenia wydajnoœci oraz zostan¹ przeprowadzone testy wydajnoœciowe pokazuj¹ce zyski w porównaniu z aplikacj¹ o klasycznej architekturze.
+
+\section{Wykorzystywane technologie}
+Do stworzenia przyk³adowej aplikacji zostan¹ wykorzystane nastêpuj¹ce technologie:
+
+\begin{itemize}
+\item \textbf{Ubuntu 16.04} - system operacyjny (dystrybucja Linux),
+\item \textbf{Java 8} - obiektowy jêzyk programowania,
+\item \textbf{Spring Framework} oraz \textbf{Spring Boot} - biblioteki umo¿liwiaj¹ce tworzenie aplikacji webowych,
+\item \textbf{Gradle} - narzêdzie s³u¿¹ce do budowania projektu oraz zarz¹dzania zale¿noœciami,
+\item \textbf{PostgreSQL} - relacyjna baza danych,
+\item \textbf{MongoDB} - dokumentowa baza danych typu NoSQL,
+\item \textbf{Docker} oraz \textbf{Docker Compose} - oprogramowanie umo¿liwiaj¹ce tworzenie wirtualnych kontenerów oraz zarz¹dzanie nimi,
+\item \textbf{Apache JMeter} - oprogramowanie do testów wydajnoœciowych aplikacji,
+\item \textbf{Git} - system kontroli wersji,
+\item \textbf{IntelliJ IDEA} - œrodowisko programistyczne.
+\end{itemize}
+
+\subsection{Ubuntu}
+Ubuntu jest dystrybucj¹ systemu Linux, która jest bardzo przyjazna dla u¿ytkownika (ang. \textit{user-friendly}).
+W celu uruchomienia nie wymaga skomplikowanej konfiguracji.
+Mo¿na j¹ w prosty sposób zainstalowaæ i od razu u¿ytkowaæ.
+
+Powodem wyboru systemu z rodziny Linux by³ fakt, ¿e umo¿liwia on znacznie wygodniejszy dostêp do wielu narzêdzi konsolowych, które czêsto s¹ wygodniejsze w u¿yciu od tych z graficznym interfejsem u¿ytkownika.
+Dziêki temu mo¿liwa jest wiêksza automatyzacja wykonywanych dzia³añ np. poprzez tworzenie skryptów.
+Dodatkowo Linux jest natywnym œrodowiskiem uruchomieniowym dla oprogramowania \textit{Docker}, które bêdzie pe³ni³o znacz¹c¹ rolê przy uruchamianiu ca³ego systemu.
+Jest on równie¿ darmowy.
+
+\subsection{Java 8}
+Java to jêzyk programowania obiektowego o sk³adni wywodz¹cej siê z C++.
+Jest to aktualnie najbardziej popularny jêzyk programowania \cite{Popularity:2017} o szerokich zastosowaniach.
+W Javie mo¿na tworzyæ m.in. aplikacje webowe, desktopowe lub te¿ na platformê Android.
+
+Java w wersji 8 wspiera elementy programowania funkcyjnego takie jak wyra¿enia lambda.
+Niedawno (we wrzeœniu 2017 roku) zosta³a wydana Java 9, jednak nowe funkcjonalnoœci, które oferuje ta wersja nie maj¹ zastosowania w tworzonej aplikacji, dlatego u¿yta zosta³a Java 8.
+
+\subsection{Spring}
+Spring Framework to nastêpca Javy Enterprise Edition (JEE). 
+Aktualnie Spring jest standardem w dziedzinie tworzenia nowoczesnych aplikacji webowych w jêzyku Java.
+W przeciwieñstwie do JEE nie wymaga skomplikowanych konfiguracji w celu uruchomienia najprostszej aplikacji, a mimo to umo¿liwia zaawansowan¹ konfiguracjê projektu.
+
+Dodatkiem do Springa jest Spring Boot, który znacznie upraszcza konfiguracjê startow¹ i posiada wbudowane serwery aplikacji (Tomcat, Jetty lub Undertow). 
+Dziêki temu mo¿liwe jest tworzenie aplikacji, które bêd¹ zawarte w pojedynczym pliku JAR (ang. \textit{Java ARchive}).
+Nie ma wiêc potrzeby (jak w przypadku klasycznego Springa czy JEE) rêcznego uruchamiania plików WAR (ang. \textit{Web-application ARchive}) na serwerze aplikacyjnym.
+
+\subsection{Gradle}
+Gradle to narzêdzie s³u¿¹ce do automatyzacji procesu budowania projektu oraz zarz¹dzania zale¿noœciami.
+Jest to alternatywa dla m.in. Maven lub Ant.
+
+Gradle do konfiguracji u¿ywa specjalnego dedykowanego jêzyka (tzw. DSL - \textit{Domain-Specific Language}) bazuj¹cego na jêzyku Groovy, który jest o wiele bardziej czytelny, ni¿ u¿ywany w innych narzêdziach tego typu XML (ang. \textit{Extensible Markup Language}).
+
+Dodatkowo Gradle posiada narzêdzie o nazwie Gradle Wrapper. 
+Wrapper jest plikiem JAR i kilkoma skryptami, które s¹ generowane i do³¹czane do projektu.
+Pozwala to na budowanie projektu bez potrzeby instalacji Gradle na komputerze.
+Rozwi¹zuje to równie¿ problem niezgodnoœci wersji, gdy¿ ka¿dy programista po pobraniu projektu od razu bêdzie mia³ tê sam¹ wersjê Gradle.
+
+\subsection{PostgreSQL}
+PostgreSQL to relacyjna baza danych, która zostanie u¿yta w aplikacji jako baza po stronie zapisu w modelu CQRS.
+Postgres zosta³ wybrany ze wzglêdu na to, ¿e jest to jedna z bardziej zaawansowanych i profesjonalnych relacyjnych baz danych cechuj¹ca siê dobr¹ wydajnoœci¹, a przy tym jest darmowa i wieloplatformowa.
+
+Oczywiœcie nie jest to jedyny mo¿liwy wybór. Mo¿na by by³o u¿yæ praktycznie ka¿dej innej relacyjnej bazy danych posiadaj¹cej mechanizmy zapewniania spójnoœci danych takie jak m.in. transakcje.
+Prosta baza danych, która jest alternatyw¹ dla PostgreSQL to np. MySQL.
+
+\subsection{MongoDB}
+MongoDB to dokumentowa baza danych typu NoSQL, która zostanie u¿yta w aplikacji jako baza po stronie odczytu w modelu CQRS.
+Mongo przechowuje dane w postaci dokumentów JSON, który w pewnym stopniu narzuca strukturê danych zgodn¹ ze standardem JSON.
+Bazy dokumentowe zosta³y bardziej szczegó³owo opisane w rozdziale \ref{document_db}.
+
+G³ównym powodem wyboru tej bazy NoSQL by³ mechanizm skalowania w Mongo o nazwie \textit{sharding}, który umo¿liwia stosunkowo prost¹ konfiguracjê klastra serwerów.
+Zostanie on bardziej szczegó³owo omówiony w rozdziale opisuj¹cym sposób skalowania \ref{sharding}.
+
+Dodatkowo Mongo posiada rozbudowan¹ i utrzymywan¹ dokumentacjê techniczn¹ wraz z wieloma poradnikami na oficjalnej stronie.
+
+\subsection{Docker}
+Docker jest oprogramowaniem umo¿liwiaj¹cym tworzenie wirtualnych izolowanych kontenerów z aplikacjami.
+Jest on w stanie zast¹piæ klasyczn¹ wirtualizacjê.
+
+Docker zamiast wirtualizacji u¿ywa tzw. konteneryzacji.
+Przewag¹ tego mechanizmu jest to, ¿e przy uruchamianiu poszczególnych kontenerów nie ma potrzeby emulowania ca³ej warstwy sprzêtowej oraz systemu operacyjnego. 
+Przynosi to znacz¹ce korzyœci w sytuacji, gdy istnieje potrzeba uruchomienia du¿ej iloœci aplikacji na oddzielnych œrodowiskach.
+
+Kontenery Dockera s¹ od siebie niezale¿ne. Posiadaj¹ odrêbne obszary pamiêci, w³asny interfejs sieciowy i przypisany do niego prywatny adres IP. 
+Maj¹ równie¿ przydzielone inne przestrzenie dyskowe, na których zainstalowany jest prosty obraz systemu operacyjnego (przewa¿nie Ubuntu, Debian lub CentOS) oraz po¿¹dana aplikacja i wszystkie wymagane zale¿noœci. 
+Wspó³dziel¹ jedynie j¹dro systemu macierzystego \cite{Docker:2016}.
+
+Na takim œrodowisku uruchamiany jest izolowany proces z aplikacj¹, który jest niewidoczny z poziomu innych kontenerów.
+Oczywiœcie kontenery mo¿na skonfigurowaæ w taki sposób, aby mog³y siê ze sob¹ komunikowaæ np. poprzez udostêpnianie poszczególnych portów lub ³¹czenie ze sob¹ kontenerów (ang. \textit{link}).
+
+Ka¿dy kontener mo¿e byæ uruchomiony przy pomocy obrazu Docker.
+Obrazy mo¿na tworzyæ samemu za pomoc¹ tzw. plików \textit{Dockerfile} np. w sytuacji, gdy istnieje potrzeba uruchomienia autorskiej aplikacji w kontenerze.
+Jednak w przypadku wiêkszoœci popularnych aplikacji czy te¿ baz danych dostêpne s¹ gotowe obrazy w darmowym rejestrze Docker.
+Wystarczy wiêc wywo³aæ jedynie jedn¹ komendê, aby Docker pobra³ obraz, zainstalowa³ go w nowym kontenerze, a nastêpnie uruchomi³ wskazan¹ aplikacjê.
+
+Oprogramowaniem, który wspomaga pracê z Dockerem jest Docker Compose.
+Narzêdzie to umo¿liwia tworzenie plików konfiguracyjnych dla aplikacji wymagaj¹cych uruchomienie wielu kontenerów Docker.
+Wszystkie serwisy, które musz¹ byæ uruchomione definiowane s¹ w pliku w formacie YAML o nazwie \textit{docker-compose.yml}.
+Nastêpnie za pomoc¹ jednego polecenia \textit{docker-compose up} mo¿na uruchomiæ wszystkie zdefiniowane wczeœniej kontenery ze wskazan¹ konfiguracj¹.
+
+Tym sposobem mo¿na za pomoc¹ jednej komendy uruchomiæ ca³e skomplikowane œrodowisko np. aplikacjê, kilka instancji baz danych, serwer SMTP itp.
+Zalet¹ tego podejœcia jest to, ¿e ka¿dy programista do uruchomienia takiego œrodowiska potrzebuje mieæ jedynie zainstalowane oprogramowanie Docker oraz Docker Compose, co znacznie u³atwia i przyspiesza pracê.
+
+\subsection{JMeter}
+Apache JMeter to darmowe narzêdzie s³u¿¹ce do wykonywania testów wydajnoœciowych ró¿nych typów aplikacji, w tym szczególnie aplikacji webowych.
+
+JMeter umo¿liwia symulowanie du¿ego obci¹¿enia serwera odpowiadaj¹cego sytuacji, w której aplikacja wykorzystywana jest przez wielu u¿ytkowników.
+Dodatkowo udostêpnia równie¿ narzêdzia do monitorowania wydajnoœci aplikacji np. czasów odpowiedzi na zapytania.
+Pozwala równie¿ tworzyæ raporty z przeprowadzonych testów w formacie zarówno tekstowym jak i graficznym np. tabele i wykresy.
+
+JMeter mo¿na rozbudowywaæ o nowe funkcjonalnoœci za pomoc¹ wielu dostêpnych pluginów.
+
+\subsection{Git}
+Git to tzw. system kontroli wersji (ang. \textit{version control system}).
+Jest to oprogramowanie konsolowe, które umo¿liwia wersjonowanie kodu aplikacji poprzez przechowywanie historii wszystkich wprowadzonych zmian.
+
+Ka¿da zmiana w kodzie zawieraj¹ca siê w logiczn¹ ca³oœæ np. dodanie nowej funkcjonalnoœci lub poprawa b³êdu, powinna byæ zakoñczona stworzeniem tzw. commit'a.
+Ka¿dy commit posiada przypisany hash wygenerowany algorytmem SHA-1 (ang. \textit{Secure Hash Algorithm}), który jednoznacznie okreœla stan kodu w danym momencie, czyli jest to wersja kodu aplikacji.
+
+Dziêki przechowywanej historii commit'ów Git umo¿liwia przywrócenie kodu aplikacji do stanu z dowolnej utworzonej wersji.
+Jest to u¿yteczne np. w momencie, gdy w nowej wersji aplikacji wystêpuje jakiœ b³¹d i potrzebny jest szybki powrót do starszej, poprawnie dzia³aj¹cej wersji.
+
+Dodatkowo Git umo¿liwia zapis kodu w zdalnym repozytorium w chmurze, czyli jednoczeœnie automatycznie tworzona jest kopia zapasowa kodu aplikacji.
+Repozytorium mo¿e byæ u¿ywane przez wielu programistów, co wspomaga wspó³dzielenie najnowszej wersji aplikacji w zespole deweloperskim.
+
+Git wspiera równie¿ tworzenie tzw. ga³êzi (ang. \textit{branches}), które umo¿liwiaj¹ tworzenie nowych funkcjonalnoœci na niezale¿nych kopiach kodu.
+Nastêpnie mo¿liwe jest scalenie zmian w kodzie z g³ówn¹ ga³êzi¹ o nazwie \textit{master}.
+Tworzenie ga³êzi pozwala kontrolowaæ, które funkcjonalnoœci powinny siê znaleŸæ w g³ównej wersji aplikacji. 
+
+\subsection{IntellJ IDEA}
+IntelliJ IDEA to nowoczesne œrodowisko programistyczne stworzone przez firmê JetBrains s³u¿¹ce do programowania g³ównie w jêzyku Java.
+
+IntelliJ oferuje inteligentne mechanizmy podpowiadania kodu, jego statyczn¹ analizê pod wzglêdem poprawnoœci, wygodne mechanizmy poruszania siê po projekcie oraz œledzenia wykonywania kodu (tzw. \textit{debugger}).
+Dodatkowo dostêpnych jest wiele darmowych wtyczek (ang. \textit{plugins}) umo¿liwiaj¹cych rozbudowê œrodowiska o dodatkowe funkcjonalnoœci np. przegl¹danie zawartoœci bazy danych lub wsparcie dla Git.
+
+Jest to aktualnie jedno z najbardziej popularnych œrodowisk programistycznych wykorzystywanych do profesjonalnych zastosowañ \cite{IDE:2017}.
+IntelliJ jest dostêpny za darmo w wersji Community, która posiada wszystkie najwa¿niejsze funkcjonalnoœci potrzebne do codziennej pracy programisty.
+
+\section{Koncepcja aplikacji}
+Celem pracy jest stworzenie serwisu webowego, na podstawie którego bêdzie mo¿liwe zaprezentowanie architektury CQRS.
+Serwis ten mo¿e posiadaæ prosty model danych oraz niewielk¹ liczbê funkcjonalnoœci.
+Dobrym przyk³adem typowej aplikacji webowej jest sklep internetowy, w którym istniej¹ produkty i u¿ytkownicy, którzy mog¹ przegl¹daæ katalog produktów oraz sk³adaæ zamówienia.
+Serwis odzwierciedlaj¹cy uproszczony sklep internetowy bêdzie wiêc zaimplementowany i opisany w tej czêœci pracy.
+
+Nie musi on wykonywaæ skomplikowanej logiki biznesowej oraz posiadaæ graficznego interfejsu u¿ytkownika, gdy¿ jest potrzebny jedynie w celu pokazania sposobu wykorzystania obu typów baz danych oraz metod zwiêkszania wydajnoœci poprzez skalowanie.
+
+Aplikacja zostanie zaimplementowana jako serwis REST (ang. \textit{REpresentational State Transfer}), który bêdzie posiada³ okreœlone API (ang. \textit{Application Programming Interface}) umo¿liwiaj¹ce komunikacjê z aplikacj¹ za pomoc¹ protoko³u HTTP (ang. \textit{HyperText Transfer Protocol}).
+REST zostanie opisany w rozdziale \ref{REST}.
+
+Najwa¿niejszym elementem systemu bêd¹ u¿ywane bazy danych oraz ich konfiguracja.
+Aplikacja bêdzie umo¿liwia³a zmianê Ÿród³a odczytu danych za pomoc¹ tzw. prze³¹cznika funkcjonalnoœci (ang. \textit{feature switch}).
+Domyœlnie bêdzie ona zachowywaæ siê jak aplikacja wykonana w klasycznym stylu, czyli zapis oraz odczyt danych bêdzie kierowany do bazy relacyjnej.
+
+Zastosowana architektura CQRS umo¿liwi w bardzo prosty sposób prze³¹czenie aplikacji w tryb odczytu z bazy danych NoSQL - wystarczy zmiana wartoœci jednej w³aœciwoœci przy uruchomieniu aplikacji.
+Sposób realizacji zostanie opisany w rozdziale \ref{feature_switch}.
+
+W sytuacji, gdy aplikacja bêdzie wykorzystywaæ bazê NoSQL jako Ÿród³o odczytu danych bazy musz¹ siê ze sob¹ synchronizowaæ po ka¿dej zmianie w bazie relacyjnej, aby w bazie NoSQL dane by³y aktualne.
+Synchronizacje zostanie opisana w rozdziale \ref{synchro}.
+
+Samo u¿ycie bazy NoSQL do odczytu danych powinno zwiêkszyæ wydajnoœæ aplikacji, jednak mo¿na pójœæ o krok dalej.
+Bazy NoSQL s¹ przystosowane do pracy w klastrach, dlatego mo¿na je w prosty sposób skalowaæ, co pozwala na osi¹gniêcie jeszcze wiêkszej wydajnoœci.
+Skalowanie baz danych oraz mechanizm skalowania bazy MongoDB o nazwie \textit{sharding} zostan¹ opisane w rozdziale \ref{scaling}.
+
+Konfiguracja baz danych oraz uruchamianie ca³ego œrodowiska bêdzie odbywa³o siê automatycznie za pomoc¹ utworzonych skryptów pow³oki Bash oraz narzêdzi Docker i Docker Compose.
+Zostanie to przedstawione w rozdziale \ref{environment}.
+
+Tak stworzona aplikacja umo¿liwi porównanie wydajnoœci zastosowanego podejœcia poprzez przeprowadzenie testów wydajnoœciowych.
+Sposób przeprowadzenia testów oraz uzyskane wyniki zostan¹ omówione w rozdziale \ref{testing}.
+
+\section{Konfiguracja projektu - Gradle}
+Podstawowy projekt aplikacji bazuj¹cej na Spring mo¿na w bardzo prosty sposób wygenerowaæ w momencie tworzenia projektu w œrodowisku IntelliJ za pomoc¹ narzêdzia \textit{Spring Initializr}.
+Jako narzêdzie do zarz¹dzania zale¿noœciami mo¿na wybraæ Maven lub Gradle.
+Do wykonania tego projektu zosta³ u¿yty Gradle.
+
+Zapewnia on podstawowe zadania (ang. \textit{task}), które s³u¿¹ m.in. do kompilacji, uruchamiania testów, tworzenia pliku JAR z aplikacj¹ oraz jej uruchamiania.
+Mo¿na je wywo³aæ u¿ywaj¹c wygenerowanego w projekcie Gradle Wrappera za pomoc¹ komendy w konsoli:
+\textit{./gradlew <listaZadañ>}.
+
+W celu zbudowania projektu (kompilacja, uruchomienie testów i stworzenie JAR) nale¿y wykonaæ \textit{./gradlew build}.
+Do uruchomienia aplikacji SpringBoot s³u¿y natomiast komenda \textit{./gradlew bootRun}.
+
+Gradle zarz¹dza równie¿ zale¿noœciami oraz konfiguracj¹ za pomoc¹ pliku \textit{build.gradle}.
+Dziêki temu ¿adna z bibliotek nie musi byæ na sta³e do³¹czona do projektu - s¹ one dynamicznie pobierane ze wskazanego repozytorium.
+Domyœlnym repozytorium jest \textit{mavenCentral}.
+Jest to najwiêksze repozytorium zawieraj¹ce praktycznie wszystkie dostêpne w Internecie biblioteki.
+
+Do tego projektu potrzebne bêd¹ nastêpuj¹ce biblioteki:
+\begin{itemize}
+\item \textbf{spring-boot-starter-web} - tworzenia aplikacji webowych w SpringBoot,
+\item \textbf{spring-boot-starter-data-jpa} - komunikacja z relacyjn¹ baz¹ danych,
+\item \textbf{spring-boot-starter-data-mongodb} - komunikacja z baz¹ MongoDB,
+\item \textbf{gradle-docker} - tworzenie obrazu Docker z aplikacj¹,
+\item \textbf{springfox-swagger} - automatyczne tworzenie dokumentacji API,
+\item \textbf{liquibase} - narzêdzie do zarz¹dzania schematem relacyjnej bazy danych,
+\item \textbf{postgresql} - sterowniki do komunikacji z baz¹ PostgreSQL,
+\item \textbf{lombok} - automatyczna generacja kodu za pomoc¹ adnotacji Spring,
+\item \textbf{spring-boot-starter-test} - tworzenie testów Spring,
+\item \textbf{assertj} - asercje wykorzystywane w testach jednostkowych,
+\item \textbf{mockito} - tworzenie tzw. \textit{mock}'ów w testach jednostkowych.
+\end{itemize}
+
+Zarz¹dzanie zale¿noœciami odbywa sie poprzez sekcjê \textit{dependencies} w pliku \textit{build.gradle}:
+
+\begin{lstlisting}[caption=build.gradle]
+buildscript {
+    ext {
+        springBootVersion = '1.5.7.RELEASE'
+    }
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+        classpath("se.transmode.gradle:gradle-docker:1.2")
+        classpath("org.liquibase:liquibase-core:3.4.1")
+        classpath("org.liquibase:liquibase-gradle-plugin:1.1.1")
+        classpath("org.postgresql:postgresql:42.1.4")
+    }
+}
+
+dependencies {
+//  SPRING
+    compile('org.springframework.boot:spring-boot-starter-web:1.5.8.RELEASE')
+    compile('org.springframework.boot:spring-boot-starter-data-jpa')
+    compile('org.springframework.boot:spring-boot-starter-data-mongodb')
+
+//  SWAGGER
+    compile('io.springfox:springfox-swagger2:2.7.0')
+    compile('io.springfox:springfox-swagger-ui:2.7.0')
+
+//  POSTGRES
+    compile('org.liquibase:liquibase-core')
+    runtime('org.postgresql:postgresql:42.1.4')
+
+    compileOnly('org.projectlombok:lombok:1.16.18')
+
+//  TEST
+    testCompile('org.springframework.boot:spring-boot-starter-test')
+    testCompile('org.assertj:assertj-core:3.8.0')
+    testCompile('org.mockito:mockito-core:2.12.0')
+}
+\end{lstlisting}
+
+W sekcji \textit{depencencies} znajduj¹ siê biblioteki wraz z ich wersjami, które zostan¹ automatycznie pobrane w momencie pierwszego uruchomienia projektu.
+Dziêki temu nigdy nie nast¹pi¹ problemy z kompilacj¹ kodu aplikacji, gdy¿ zawsze bêd¹ pobrane odpowiednie wersje bibliotek.
+
+\section{REST}
+\label{REST}
+Aplikacja zosta³a wykonana jako serwis REST (ang. \textit{REpresentational State Transfer}).
+REST jest swego rodzaju wzorcem, który narzuca dobre praktyki odnoœnie tworzenia aplikacji rozproszonych.
+Bazuje on na bezstanowej komunikacji klient-serwer za pomoc¹ protoko³u HTTP (ang. \textit{HyperText Transfer Protocol}).
+Jest to alternatywa dla bardziej z³o¿onych, rzadziej u¿ywanych mechanizmów takich jak CORBA (ang. \textit{Common Object Request Broker Architecture}), RPC (ang. \textit{Remote Procedure Call}) czy te¿ SOAP (ang. \textit{Simple Object Access Protocol}) \cite{REST:2008}.
+
+Podejœcie tego typu stosuje siê w nowoczesnych systemach maj¹cych architekturê tzw. mikroserwisów lub mikrous³ug (ang. \textit{microservices}).
+Dziêki temu, ¿e wykorzystywany jest protokó³ HTTP aplikacje, które siê ze sob¹ komunikuj¹ mog¹ byæ stworzone przy u¿yciu ró¿nych technologii oraz jêzyków programowania.
+
+Przyk³adowo zaimplementowana aplikacja sklepu internetowego nie posiada interfejsu u¿ytkownika, jednak udostêpnia ona mo¿liwoœæ korzystania z niej za pomoc¹ API (ang. \textit{Application Programming Interface}).
+Daje to mo¿liwoœæ napisania widoku w zupe³nie innej technologii np. HTML/CSS oraz PHP lub JavaScript itp.
+Aplikacja z graficznym interfejsem u¿ytkownika mog³a by korzystaæ z serwisu sklepu internetowego wysy³aj¹c do niego ¿¹dania HTTP i prezentowaæ otrzymane dane u¿ytkownikowi w formie strony internetowej.
+Dodatkowo mo¿e wtedy istnieæ wiele widoków np. dodatkowy w postaci aplikacji mobilnej korzystaj¹cy z tego samego serwisu sklepu.
+
+\subsection{Protokó³ HTTP}
+\subsubsection{Metody}
+Klient wysy³aj¹cy zapytania HTTP do serwera najczêœciej korzysta z dwóch metod GET oraz POST.
+GET jest najbardziej popularn¹ metod¹ HTTP, gdy¿ u¿ywana jest przewa¿nie do pobierania zasobów.
+Przyk³adowo, gdy wpiszemy w przegl¹darce adres strony internetowej, to tak na prawdê wysy³amy do serwera ¿¹danie HTTP z metod¹ GET o pobranie zasobów - w tym przypadku strony internetowej.
+Drug¹ najbardziej popularn¹ metod¹ HTTP jest POST, którego u¿ywa siê przewa¿nie do zapisu danych.
+
+Teoretycznie mo¿na by u¿ywaæ jedynie tych dwóch metod do ka¿dej operacji na danych np. równie¿ do usuwania lub edycji, jednak by³oby to bardzo nieczytelne.
+REST zak³ada wykorzystanie innych metod HTTP.
+
+Do tych najczêœciej u¿ywanych nale¿¹:
+\begin{itemize}
+\item \textbf{GET} - pobieranie stanu zasobu,
+\item \textbf{POST} - tworzenie zasobu,
+\item \textbf{DELETE} - usuniêcie zasobu,
+\item \textbf{PUT} - aktualizacja ca³ego zasobu (zast¹pienie go innym),
+\item \textbf{PATCH} - aktualizacja jakiejœ czêœci istniej¹cego zasobu.
+\end{itemize}
+
+Istniej¹ równie¿ inne metody HTTP takie jak HEAD, OPTIONS, CONNECT i TRACE, jednak s¹ one o wiele rzadziej u¿ywane.
+
+\subsubsection{Kody statusów}
+Ka¿da odpowiedŸ na zapytanie HTTP oprócz danych zwraca równie¿ kod statusu.
+Na podstawie wartoœci kodów mo¿liwe jest okreœlenie typu zwróconej odpowiedzi.
+
+Podstawowy podzia³ kodów HTTP, to:
+\begin{itemize}
+\item \textbf{1xx} - kody informacyjne,
+\item \textbf{2xx} - kody powodzenia,
+\item \textbf{3xx} - kody przekierowania,
+\item \textbf{4xx} - kody b³êdu klienta,
+\item \textbf{5xx} - kody b³êdu serwera,
+
+gdzie \textit{x} oznacza okreœlon¹ cyfrê.
+\end{itemize}
+
+Najczêœciej u¿ywane kody statusów to:
+\begin{itemize}
+\item \textbf{200 (OK)} - operacja udana,
+\item \textbf{201 (Created)} - zasób zosta³ utworzony,
+\item \textbf{400 (Bad Request)} - niepoprawne zapytanie,
+\item \textbf{404 (Not Found)} - zasób nie zosta³ znaleziony,
+\item \textbf{500 (Internal Server Error)} - b³¹d wewnêtrzny serwera,
+\item \textbf{503 (Service Unavailable)} - serwis niedostêpny.
+\end{itemize}
+
+\subsection{Dokumentacja API}
+API aplikacji, czyli udostêpnione dla klienta mo¿liwe do wykonania operacje na aplikacji czêsto wymaga dokumentacji.
+Czasami nie do koñca wiadomo, co dana metoda robi, jakie parametry przyjmuje, czy jakie dane zwraca.
+
+Z pomoc¹ przychodzi tutaj narzêdzie o nazwie Swagger, które automatycznie generuje dokumentacjê API aplikacji Spring na podstawie kodu.
+Dodatkowo generowany jest równie¿ widok w postaci strony HTML, który umo¿liwia wysy³anie zapytañ.
+Dziêki temu u¿ytkownik chc¹cy korzystaæ z aplikacji, nie ma potrzeby rêcznego tworzenia zapytañ HTTP np. przez narzêdzie \textit{Postman}.
+API aplikacji oraz jego dokumentacja zostan¹ przedstawione w rozdziale \ref{API}.
+
+\section{Model danych}
+Model danych nie jest zbyt rozbudowany, gdy¿ ma on s³u¿yæ jedynie jako przyk³ad.
+Odzwierciedlenie takiego modelu w bazie danych bêdzie wymaga³o jednak stworzenia kilku relacji.
+
+Jako przyk³ad wykorzystany zosta³ relacyjny model danych, gdy¿ to w³aœnie relacje czêsto powoduj¹ spadki wydajnoœci przy odczycie danych, gdy¿ niezbêdne jest ³¹czenie danych za pomoc¹ tzw. \textit{JOIN}'ów.
+
+Na model danych aplikacji sk³ada siê kilka elementów takich jak produkt, u¿ytkownik, zamówienie oraz pozycje w zamówieniu (rys. \ref{fig:db_scheme}).
+Dziêki dodanym adnotacjom Spring i bibliotece Spring Data JPA schemat danych w bazie relacyjnej (tabele, relacje, klucze itp.) zostanie automatycznie utworzony na podstawie zdefiniowanych klas.
+
+\subsection{Produkt}
+Produkt jest reprezentowany w kodzie aplikacji jako klasa o nazwie \textit{Product}.
+Przechowuje on g³ówne informacje o produkcie takie jak jego unikalny identyfikator, nazwê, cenê, opis oraz iloœæ.
+
+\begin{lstlisting}[caption=Product.java]
+@Entity(name = "products")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class Product {
+
+    @Id
+    @GeneratedValue(generator = "uuid")
+    @GenericGenerator(name = "uuid", strategy = "uuid2")
+    @Column(name = "id")
+    @NotNull
+    private UUID uuid;
+
+    @NotNull
+    private String name;
+
+    @NotNull
+    private BigDecimal price;
+
+    @NotNull
+    private String description;
+}
+\end{lstlisting}
+
+W klasie zosta³y umieszczone adnotacje Spring - nazwy poprzedzone znakiem \textit{@}.
+S³u¿¹ one do konfiguracji klasy.
+
+Pierwsza adnotacja \textit{@Entity} oznacza klasê jako encjê, czyli obiekt, który bêdzie u¿ywany do przechowywania danych pochodz¹cych z bazy danych.
+Encja tej klasy jest mapowana na dane przechowywane w tabeli \textit{products}, gdy¿ tak w³aœnie zosta³a ona skonfigurowana przy u¿yciu adnotacji \textit{@Entity} za pomoc¹ w³aœciwoœci \textit{name = "products"}.
+
+Dodatkowe adnotacje takie jak \textit{@Getter}, \textit{@Setter}, \textit{@NoArgsConstructor} oraz \textit{@AllArgsConstructor} pochodz¹ z biblioteki Lombok i umo¿liwiaj¹ automatyczne tworzenie powtarzalnego kodu takiego jak \textit{gettery}, \textit{settery} oraz \textit{konstruktory}.
+Dziêki temu nie ma potrzeby pisania dodatkowych linijek kodu wewn¹trz klasy.
+Nie zawsze generowanie wszystkich getterów i setterów do pól jest dobrym rozwi¹zaniem, jednak w przypadku encji jest to wymagane, gdy¿ s¹ one u¿ywane przez bibliotekê do mapowania relacyjno-obiektowego.
+
+Jako unikalny identyfikator obiektu zosta³ zastosowany typ UUID (ang. \textit{Universally Unique IDentifier}).
+Jest to 128-bitowa, generowana losowo wartoœæ w postaci hexadecymalnej.
+Dziêki zastosowanemu algorytmowi generowania i ogromnej iloœci kombinacji UUID zapewnia unikalnoœæ ka¿dego wygenerowanego identyfikatora.
+W systemach rozproszonych tego typu identyfikatory zapewniaj¹ unikalnoœæ, ni¿ wykorzystanie sekwencji, gdy¿ identyfikatory stworzone na podstawie sekwencji s¹ unikalne jedynie w obrêbie jednej bazy danych \cite{UUID:2017}.
+
+UUID jest automatycznie generowany dziêki u¿yciu adnotacji \textit{@GeneratedValue} oraz \textit{@GenericGenerator}.
+Odatkowo pole \textit{uuid} jest oznaczane jako klucz g³ówny tabeli za pomoc¹ adnotacji \textit{@Id}.
+
+Ostatnim u¿ytym typem adnotacji jest \textit{@NotNull}, która zapewnia, ¿e pole zostanie zainicjalizowane jak¹œ wartoœci¹, czyli nie przyjmie wartoœci \textit{null}.
+
+\subsection{U¿ytkownik}
+U¿ytkownik sklepu jest odzwierciedlony w kodzie aplikacji jako klasa \textit{Customer}.
+Przechowuje ona informacje o identyfikatorze u¿ytkownika, jego nazwie, adresie, stanie konta oraz wszystkich jego zamówieniach.
+
+\begin{lstlisting}[caption=Customer.java]
+@Entity(name = "customers")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class Customer {
+
+    @Id
+    @GeneratedValue(generator = "uuid")
+    @GenericGenerator(name = "uuid", strategy = "uuid2")
+    @Column(name = "id")
+    @NotNull
+    private UUID uuid;
+
+    @NotNull
+    private String name;
+
+    @Embedded
+    @NotNull
+    private Address address;
+
+    @NotNull
+    private BigDecimal balance;
+
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
+    private List<Order> orders;
+}
+\end{lstlisting}
+
+Klasa \textit{Customer} wygl¹da podobnie do klasy \textit{Product} pod wzglêdem konfiguracji.
+Posiada jednak dwie dodatkowe adnotacje.
+
+Pierwsza z nich to \textit{@Embedded} na polu \textit{address}.
+Adres u¿ytkownika jest rezprezentowany przez wiêcej, ni¿ jedno pole, dlatego zosta³ stworzony specjalny obiekt klasy \textit{Address}.
+Dziêki tej adnotacji nie ma potrzeby tworzenia dodatkowej tabeli przechowuj¹cej adres - wszystkie pola obiektu \textit{Address} zostan¹ dodane do tabeli \textit{customers}.
+
+\begin{lstlisting}[caption=Address.java]
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Embeddable
+public class Address {
+
+    @Column(nullable = false)
+    private String street;
+
+    @Column(nullable = false)
+    private String city;
+
+    @Column(nullable = false)
+    private String postCode;
+}
+\end{lstlisting}
+
+Klasa \textit{Address} oznaczona jest adnotacj¹ \textit{@Embeddable}.
+Oznacza to, ¿e nie musi istnieæ osobna tabela do przechowywania adresów - mo¿e byæ on wbudowany (ang. \textit{embedded}) w inn¹ tabelê.
+
+Druga dodatkowa adnotacja u¿yta w klasie \textit{Customer}, to \textit{@OneToMany} na polu \textit{orders}.
+Mówi ona o tym, ¿e jest to relacja jeden do wielu (ang. \textit{one to many}) z encj¹ typu \textit{Orders}.
+Oznacza to, ¿e u¿ytkownik bêdzie móg³ posiadaæ wiele zamówieñ przechowywanych w innej tabeli.
+
+\subsection{Zamówienie}
+Kolejnym elementem modelu jest zmówienie, które jest przypisane do konkretnego u¿ytkownika.
+Klasa reprezentuj¹ca zamówienie o nazwie \textit{Order} zawieraj¹ca unikalny identyfikatora zamówienia, datê jego wykonania, typ p³atnoœci, listê pozycji wchodz¹cych w jego sk³ad oraz informacje o u¿ytkowniku, który dokona³ zamówienia.
+
+\begin{lstlisting}[caption=Order.java]
+@Entity(name = "orders")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class Order {
+
+    @Id
+    @GeneratedValue(generator = "uuid")
+    @GenericGenerator(name = "uuid", strategy = "uuid2")
+    @Column(name = "id")
+    @NotNull
+    private UUID uuid;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+    @NotNull
+    private List<OrderItem> orderItems;
+
+    @NotNull
+    private LocalDateTime dateTime;
+
+    @Enumerated(EnumType.STRING)
+    @NotNull
+    private PaymentType paymentType;
+
+    @ManyToOne
+    @JoinColumn(name = "customer_uuid")
+    @NotNull
+    private Customer customer;
+}
+\end{lstlisting}
+
+Zamówienie jest powi¹zane z jego elementami za pomoc¹ relacji jeden do wielu (\textit{@OneToMany}) oraz z u¿ytkownikiem relacj¹ wiele do jednego (\textit{@ManyToOne}), gdy¿ u¿ytkownik mo¿e posiadaæ wiele zamówieñ.
+Adnotacja \textit{@JoinColumn} mówi o tym na podstawie której kolumny tworzona jest relacja.
+
+\subsection{Element zamówienia}
+Klasa \textit{OrderItem} reprezentuje ka¿dy z elementów, który wchodzi w sk³ad zamówienia.
+Przechowuje ona informacje o konkretnym produkcie (relacja jeden-do-jednego) oraz iloœæ zamówionych produktów.
+
+\begin{lstlisting}[caption=OrderItem.java]
+@Entity(name = "orderItems")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderItem {
+
+    @Id
+    @GeneratedValue(generator = "uuid")
+    @GenericGenerator(name = "uuid", strategy = "uuid2")
+    @Column(name = "id")
+    @NotNull
+    private UUID uuid;
+
+    @NotNull
+    private Integer quantity;
+
+    @NotNull
+    @OneToOne
+    private Product product;
+
+    @ManyToOne
+    @JoinColumn(name = "order_uuid")
+    @NotNull
+    private Order order;
+}
+\end{lstlisting}
+
+\subsection{Schemat danych}
+Na rysunku \ref{fig:db_scheme} przedstawiony jest schemat ilustruj¹cy relacje oraz model danych. 
+Zosta³ on wygenerowany za pomoc¹ programu \textit{DbVisualizer} na podstawie istniej¹cej struktury bazy.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=15cm]{Rysunki/Rozdzial3/db_scheme.png}
+	\caption{Struktura relacyjnej bazy danych}
+	\label{fig:db_scheme}
+\end{figure}
+
+\section{API}
+\label{API}
+API umo¿liwia u¿ytkownikowi korzystanie z aplikacji za pomoc¹ zapytañ HTTP.
+
+Funkcjonalnoœci, jakie udostêpnia aplikacja s¹ operacjami na modelu danych takie jak dodawanie, wyszukiwanie, usuwanie oraz modyfikacja.
+W szczególnoœci jest to na przyk³ad dodanie u¿ytkownika, dodanie produktu lub jego wyszukanie, stworzenie zamówienia itp.
+
+Spis wszystkich dostêpnych akcji jest widoczny na widoku z dokumentacj¹ API (rysunek \ref{Swagger}).
+Zosta³a ona automatycznie wygenerowana za pomoc¹ narzêdzia Swagger, którego konfiguracja zosta³a opisana w rozdziale \ref{Swagger}.
+
+
+
+Akcje s¹ pogrupowane pod wzglêdem typu danych, którego dotycz¹.
+Przyk³adowo wszystkie operacje dotycz¹ce produktów sklepowych znajduj¹ siê w sekcji \textit{products-rest-controller}.
+Oznacza to, ¿e wszystkie one znajduj¹ siê w jednej klasie REST kontrolera Spring, który umo¿liwia w³aœnie udostêpnienie API aplikacji.
+
+\subsection{Kontrolery REST}
+Spring umo¿liwia tworzenie kontrolerów REST, które definiuj¹ jakie akcje bêd¹ obs³ugiwane po przyjœciu odpowiednich zapytañ HTTP.
+
+Jako przyk³ad zostanie przedstawiony kontroler dotycz¹cy produktów oraz dwie akcje: dodanie oraz pobranie jednego produktu.
+Wszystkie inne kontrolery s¹ zaimplementowane w analogiczny sposób.
+
+W projekcie aplikacji klasa reprezentuj¹ca kontroler s³u¿¹cy do obs³ugi zapytañ HTTP dotycz¹cych akcji na produktach nosi nazwê \textit{ProductsRestController} i jest przedstawiona na listingu \ref{code:ProductsRestController}
+
+
+\begin{lstlisting}[caption=ProductsRestController.java, label=code:ProductsRestController]
+@RestController
+@RequestMapping(value = "/products", 
+    produces = MediaType.APPLICATION_JSON_VALUE, 
+    consumes = MediaType.APPLICATION_JSON_VALUE)
+public class ProductsRestController {
+
+    private final ProductsWriteApplicationService writeApplicationService;
+    private final ProductsReadApplicationService readApplicationService;
+
+    public ProductsRestController(
+        final ProductsWriteApplicationService writeApplicationService,
+        final ProductsReadApplicationService readApplicationService) {
+        this.writeApplicationService = writeApplicationService;
+        this.readApplicationService = readApplicationService;
+    }
+
+    @RequestMapping(method = RequestMethod.POST)
+    public ResponseEntity<?> createProduct(@RequestBody final CreateProductRequest request) {
+        final UUID uuid = writeApplicationService.create(request.asCommand());
+
+        return new ResponseEntity<>(new ObjectCreatedResponse(uuid), HttpStatus.CREATED);
+    }
+
+    @RequestMapping(value = "/{uuid}", method = RequestMethod.GET)
+    public ResponseEntity<?> getProduct(@PathVariable final UUID uuid) {
+        final ProductReadModel product = readApplicationService.getProduct(new GetByIdQuery(uuid));
+        return new ResponseEntity<>(product, HttpStatus.OK);
+    }
+
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    @ExceptionHandler(ProductNotFoundException.class)
+    @ResponseBody
+    public ResponseEntity handle(final ProductNotFoundException exception) {
+        return ErrorResponse
+            .prepare("Product not found", exception.getMessage(), HttpStatus.NOT_FOUND);
+    }
+}
+\end{lstlisting}
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=15cm]{Rysunki/Rozdzial3/swagger.png}
+	\caption{Spis dostêpnych operacji na API}
+	\label{fig:swagger}
+\end{figure}
+
+Najwa¿niejsze elementy listingu \ref{code:ProductsRestController} dotycz¹ce klasy to:
+\begin{itemize}
+\item \textbf{linia 1} - adnotacja \textit{@RestController} oznacza klasê jako kontroler, który bêdzie umo¿liwia³ odbieranie metod HTTP,
+\item \textbf{linia 2} - adnotacja \textit{@RequestMapping} tworzy œcie¿kê bazow¹, pod któr¹ dostêpne bêd¹ metody danego kontrolera.
+Wartoœæ podawana jest przez atrybut \textit{value}.
+Atrybut \textit{produces} oraz \textit{consumes} mówi¹ o formacie danych, które bêd¹ zwracane oraz pobierane.
+W obu przypadkach jest to format JSON,
+\item \textbf{linia 7 i 8} - deklaracja dwóch serwisów, które umo¿liwi¹ zapis oraz odczyt danych. 
+Serwisy bardziej szczegó³owo zosta³y opisane w rozdziale \ref{services}.
+\item \textbf{linia 10} - konstruktor, który jako parametry przyjmuje serwisy.
+Jest to mechanizm tzw. wstrzykiwania zale¿noœci (ang. \textit{dependency injection}), który umo¿liwia zainicjalizowanie serwisu odpowiedni¹ wartoœci¹ w zale¿noœci od konfiguracji aplikacji np. serwis do odczytu danych z bazy relacyjnej lub NoSQL.
+Wiêcej o wstrzykiwaniu zale¿noœci w rozdziale \ref{dependency_injection}. 
+\end{itemize}
+
+Najwa¿niejsze elementy listingu \ref{code:ProductsRestController} dotycz¹ce metody tworzenia produktu (\textit{createProduct}) to:
+\begin{itemize}
+\item \textbf{linia 17} - adnotacja \textit{@RequestMapping} dotycz¹ca konkretnej akcji.
+Parametr \textit{method} okreœla metodê HTTP, która jest obs³ugiwana przez dan¹ funkcjê,
+\item \textbf{linia 18} - definicja metody s³u¿¹cej do dodawania produktu.
+Jako parametr przyjmuje obiekt zapytania (ang. \textit{request}), który oznaczony jest adnotacj¹ \textit{@RequestBody}.
+Umo¿liwi to wysy³anie parametrów zapytania jako obiekt w formacie JSON,
+\item \textbf{linia 19} - u¿ycie serwisu, który stworzy produkt na podstawia obiektu zapytania,
+\item \textbf{linia 21} - zwrócenie odpowiedzi jako obiekt \textit{ResponseEntity} zawieraj¹cy dane oraz kod statusu odpowiedzi.
+\end{itemize}
+
+Metodê s³u¿¹c¹ do pobierania produktu mo¿na zaimplementowaæ analogicznie.
+Ró¿ni siê ona jedynie kilkoma szczegó³ami.
+
+W kontrolerach dodatkowo implementuje siê mechanizmy reaguj¹ce na b³êdy ze strony u¿ytkownika.
+Najwa¿niejsz elementy listingu \ref{code:ProductsRestController} dotycz¹ce obs³ugi b³êdu to:
+
+\begin{itemize}
+\item \textbf{linia 30} - adnotacja \textit{@ResponseStatus} definiuje jaki kod odpowiedzi zostanie zwrócony,
+\item \textbf{linia 31} - adnotacja \textit{@ExceptionHandler} konfiguruje jaki typ wyj¹tku powinien byæ obs³u¿ony przez metodê,
+\item \textbf{linia 33} - definicja metody \textit{handle} umo¿liwiaj¹cej obs³ugê b³êdów,
+\item \textbf{linia 34} - zwracany jest obiekt zawieraj¹cy informacjê o b³êdzie oraz odpowiedni kod statusu.
+\end{itemize}
+
+\subsection{Konfiguracja Swagger}
+\label{Swagger}
+Konfiguracja aplikacji Spring odbywa siê przewa¿nie przez implementacjê klas konfiguracyjnych oznaczonych adnotacj¹ \textit{@Configure}.
+
+W celu u¿ycia narzêdzia Swagger nale¿y zaimplementowaæ jedynie jedn¹ klasê konfiguracyjn¹ przedstawion¹ na listingu \ref{code:SwaggerConfiguration}.
+
+\begin{lstlisting}[caption=SwaggerConfiguration.java, label=code:SwaggerConfiguration]
+@Configuration
+@EnableSwagger2
+public class SwaggerConfiguration {
+
+    @Bean
+    public Docket api() {
+        return new Docket(DocumentationType.SWAGGER_2)
+            .select()
+            .paths(PathSelectors.any())
+            .build();
+    }
+}
+\end{lstlisting}
+
+Klasa ta aktywuje narzêdzie Swagger oraz tworzy obiekt z konfiguracj¹, który bêdzie widoczny w ca³ym kontekœcie Springa.
+Jest to tzw. \textit{Bean}.
+
+Po dodaniu konfiguracji wszystkie metody z kontrolerów bêd¹ dodawane do widoku z dokumentacj¹ API dostêpn¹ pod adresem \textit{http://\{adres-hosta-aplikacji\}/swagger-ui.html}.
+
+\subsection{Wysy³anie zapytañ do aplikacji}
+Dziêki bibliotece Swagger rêczne wysy³anie zapytañ jest bardzo proste.
+Po rozwiniêciu danej akcji uka¿e siê dodatkowy opis API.
+Mo¿liwe jest dodanie opisu akcji, wyœwietlany jest model zapytania oraz model odpowiedzi wraz z przyk³adowymi wartoœciami.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=15cm]{Rysunki/Rozdzial3/swagger_action.png}
+	\caption{Opis akcji}
+	\label{fig:swagger_action}
+\end{figure}
+
+Na samym dole rysunku \ref{fig:swagger_action} znajduje siê przycisk \textit{Try it out!}, który pozwala na wys³anie zapytania do aplikacji ze wskazanymi parametrami.
+OdpowiedŸ zostanie wyœwietlona poni¿ej.
+Zosta³o to ukazane na rysunku \ref{fig:swagger_action_response}.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=15cm]{Rysunki/Rozdzial3/swagger_action_result.png}
+	\caption{OdpowiedŸ aplikacji}
+	\label{fig:swagger_action_response}
+\end{figure}
+
+\section{Wykonywanie logiki biznesowej}
+\label{services}
+\label{command}
+Wszelkie operacje na modelu danych wykonuj¹ tzw. serwisy.
+Klasy serwisów s¹ w Springu oznaczane adnotacj¹ \textit{@Service}.
+Umo¿liwia to automatyczne utworzenie obiektu (tzw. \textit{Bean}), który widoczny bêdzie w ca³ym kontekœcie Springa.
+
+Serwisy przetwarzaj¹ dane, a nastêpnie utrwalaj¹ ich stan w bazie danych za pomoc¹ tzw. repozytoriów, które zostan¹ opisane w rozdziale \ref{repository}.
+Jako przyk³ad zostanie zaprezentowany serwis s³u¿¹cy do zapisu danych dotycz¹cych produktów widoczny na listingu \ref{code:ProductsWriteApplicationService}.
+
+\begin{lstlisting}[caption=ProductsWriteApplicationService.java, label=code:ProductsWriteApplicationService]
+@Service
+public class ProductsWriteApplicationService {
+
+    private final ProductWriteRepository writeRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
+    public ProductsWriteApplicationService(
+        final ProductWriteRepository writeRepository,
+        final ApplicationEventPublisher eventPublisher) {
+        this.writeRepository = writeRepository;
+        this.eventPublisher = eventPublisher;
+    }
+
+    @Transactional
+    public UUID create(final CreateProductCommand command) {
+        final Product savedEntity = saveProduct(command);
+        eventPublisher.publishEvent(ProductCreatedEvent.from(savedEntity));
+        return savedEntity.getUuid();
+    }
+
+    private Product saveProduct(final CreateProductCommand command) {
+        final Product entity = Product.fromCommand(command);
+        return writeRepository.save(entity);
+    }
+}
+\end{lstlisting}
+
+Klasa \textit{ProductsWriteApplicationService} wykorzystuje dwie zale¿noœci, które s¹ jej dostarczone poprzez konstruktor.
+Pierwsz¹ z nich jest obiekt repozytorium umo¿liwiaj¹cy zapis danych do bazy - klasa \textit{ProductsWriteRepository}, która zosta³a rêcznie zaimplementowana.
+Natomiast drug¹ zale¿noœci¹ jest gotowy obiekt klasy \textit{ApplicationEventPublisher}, który jest udostêpniany przez Spring i s³u¿y do publikacji zdarzeñ (ang. \textit{event}).
+Tutaj obiekt ten jest u¿ywany do zg³oszenia zdarzenia œwiadcz¹cego o stworzeniu nowego produktu.
+Mechanizm zdarzeñ zostanie opisany w rozdziale \ref{synchro}, gdy¿ zosta³ on u¿yty do synchronizacji danych z baz¹ NoSQL.
+
+Klasa posiada jedn¹ metodê publiczn¹ \textit{create}, która na podstawie przekazanego obiektu komendy \textit{CreateProductCommand} utworzy obiekt produktu i zapisze go w bazie danych.
+Jest ona równie¿ oznaczona adnotacj¹ \textit{@Transactional}, która zapewnia wykonanie wszystkich operacji w ramach jednej transakcji.
+
+
+Co prawda transakcyjnoœæ w tym serwisie nie jest wymagana, gdy¿ wykonywany jest jedynie jeden zapis do bazy.
+Zalecane jest jednak wykonywanie w transakcji ka¿dej metody modyfikuj¹cej stan w serwisach aplikacyjnych.
+Transakcje s¹ niezbêdne przy wykonywaniu kilku operacji modyfikacji danych, które razem tworz¹ jedn¹ logiczn¹ ca³oœæ.
+Dziêki transakcji w przypadku wyst¹pienia b³êdu w trakcie wprowadzania zmian, zostan¹ one wycofane.
+Zapewnia to, ¿e dane bêd¹ znajdowaæ siê zawsze w spójnym stanie.
+
+\subsection{Komendy oraz kwerendy}
+Zgodnie z za³o¿eniami architektury CQRS istniej¹ osobne serwisy do zapisu oraz odczytu danych.
+Posiadaj¹ one metody, które do zapisu przyjmuj¹ obiekty komend, natomiast do odczytu s¹ to obiekty kwerend.
+
+Analizuj¹c nag³ówek metody tworz¹cej produkt mo¿na zauwa¿yæ, ¿e jako parametr przyjmuje ona w³aœnie obiekt komendy:
+
+\begin{lstlisting}[caption=Nag³ówek metody tworz¹cej produkt]
+public UUID create(final CreateProductCommand command)
+\end{lstlisting}
+
+Obiekt tej klasy s³u¿y do przechowywania informacji, na podstawie których bêdzie mo¿liwe utworzenie w³aœciwego obiektu produktu.
+
+\begin{lstlisting}[caption=CreateProductCommand]
+public class CreateProductCommand implements Command {
+
+    private final String name;
+    private final BigDecimal price;
+    private final String description;
+// ...    
+}
+\end{lstlisting}
+
+Obiekty kwerend s¹ bardzo podobne, z t¹ ró¿nic¹, ¿e u¿ywa siê ich jako argumenty funkcji s³u¿¹cych do odczytu danych.
+Zawieraj¹ one informacje na temat kryteriów wyszukiwania.
+Przyk³ad nag³ówka metody pobieraj¹cej dane o produkcie na podstawie jego identyfikatora widoczny jest na listingu \ref{code:getItem}.
+
+\begin{lstlisting}[caption=Nag³owek metody s³u¿¹cej do pobierania danych produktu, label=code:getItem]
+public ProductReadModel getItem(final GetByIdQuery query)
+\end{lstlisting}
+
+Obiekt kwerendy jedynie przechowuje dane, które zostan¹ u¿yte jako kryterium wyszukiwania.
+
+\begin{lstlisting}[caption=GetByIdQuery]
+public class GetByIdQuery implements Query {
+
+    private final UUID uuid;
+    
+// ...
+}
+\end{lstlisting}
+
+ 
+\section{Komunikacja z baz¹ danych}
+\label{repository}
+Za po³¹czenie z baz¹ danych oraz wykonywanie na niej operacji odpowiadaj¹ tzw. repozytoria (ang. \textit{repository}).
+W Springu s¹ one oznaczane adnotacj¹ \textit{@Repository}.
+
+Dziêki bibliotece \textit{spring-boot-starter-data-jpa} dostêpne s¹ gotowe generyczne klasy repozytoriów, które maj¹ zaimplementowane wszystkie podstawowe operacje na danych takie jak ich zapis, odczyt, wyszukiwanie po polu itp.
+Wystarczy jedynie stworzyæ pusty interfejs rozszerzaj¹cy \textit{CrudRepository} z odpowiednim typem.
+Dziêki temu mo¿liwe jest wykonywanie operacji na danych bez potrzeby pisania zapytañ SQL.
+
+Przyk³adem wykorzystania gotowych implementacji jest klasa s³u¿¹ca do pobierania informacji o produkcie \textit{ProductReadRepository}.
+Jest to interfejs, który rozszerza \textit{CrudRepository}.
+Dziêki temu dziedziczy po nim takie metody jak np. \textit{findAll} oraz \textit{findOne}.
+
+\begin{lstlisting}[caption=ProductReadRepository]
+@Repository
+public interface ProductReadRepository extends CrudRepository<Product, UUID> {
+
+}
+\end{lstlisting}
+
+Mo¿liwe jest równie¿ tworzenie metod wykorzystuj¹cych zapytania SQL u¿ywaj¹c adnotacji \textit{@Query}.
+Nale¿y j¹ umieœciæ nad nag³ówkiem metody i jako parametr podaæ ci¹g znaków z zapytaniem.
+Jest to lekko zmodyfikowany SQL, który umo¿liwia na przyk³ad u¿ywanie nazw klas (które s¹ encjami) zamiast nazw tabel. 
+Zostanie to automatycznie skonwertowane na odpowiadaj¹c¹ encji nazwê tabeli w bazie danych.
+
+\begin{lstlisting}[caption=Przyk³ad wykorzystania adnotacji \textit{@Query}]
+@Query("SELECT product FROM Product product WHERE product.uuid = ?")
+Product findProductByUuid(String uuid);
+\end{lstlisting}
+
+\section{Zmiana Ÿród³a odczytu danych}
+
+Zgodnie z za³o¿eniami aplikacja mo¿e pracowaæ w dwóch trybach:
+\begin{itemize}
+\item wszystkie operacja zapisu oraz odczytu danych kierowane s¹ do bazy relacyjnej,
+\item operacje zapisu danych wykonywane s¹ na bazie relacyjnej, nastêpnie zmiany wprowadzane s¹ do bazy NoSQL (synchronizacja) i odczyty danych s¹ realizowane jedynie z bazy NoSQL.
+\end{itemize}
+
+\begin{figure}[h!]
+  \centering
+
+  \subfloat[Baza relacyjna - odczyt i zapis]{\label{fig:feature_switch_1}\includegraphics[width=0.35\textwidth]{Rysunki/Rozdzial3/1_feature_switch.pdf}}
+  \hspace{2cm}
+  \subfloat[Baza relacyjna - zapis, baza NoSQL - odczyt]{\label{fig:feature_switch_2}\includegraphics[width=0.37\textwidth]{Rysunki/Rozdzial3/2_feature_switch.pdf}}
+      
+  \caption{Tryby pracy aplikacji}
+\end{figure}
+
+Mo¿liwe jest u¿ywanie jednej z tych dwóch opcji w zale¿noœci od konfiguracji aplikacji.
+Jest to zrealizowane za pomoc¹ tzw. prze³¹cznika funkcjonalnoœci (ang. \textit{feature switch}).
+
+\subsection{Prze³¹cznik funkcjonalnoœci}
+\label{feature_switch}
+Prze³¹cznik funkcjonalnoœci umo¿liwia aktywacjê/deaktywacjê lub zmianê danej funkcjonalnoœci, dla której jest wykonany.
+W tym wypadku przy uruchomieniu aplikacji bêdzie mo¿na wybraæ sk¹d maj¹ byæ odczytywane dane, czyli z bazy relacyjnej lub NoSQL.
+
+W projekcie Spring domyœlnie w katalogu z zasobami \textit{/resources} znajduje siê plik \textit{application.properties}.
+Przechowuje on w³aœciwoœci, które u¿ywane s¹ do konfiguracji projektu.
+Mo¿na w nim definiowaæ w³asne w³aœciwoœci, które mog¹ zostaæ u¿yte np. do wykonania prze³¹cznika funkcjonalnoœci.
+
+Do pliku \textit{application.properties} zosta³a dodana w³aœciwoœæ \textit{read.source}.
+Bêdzie ona przyjmowaæ dwie wartoœci: \textit{nosql} lub \textit{rdbms}, które odpowiednio bêd¹ oznacza³y, ¿e Ÿród³em odczytu danych ma byæ baza NoSQL lub baza relacyjna (RDBMS).
+
+\begin{lstlisting}[caption=application.properties]
+read.source=nosql
+\end{lstlisting}
+
+Tak zdefiniowana w³aœciwoœæ mo¿e zostaæ u¿yta do podjêcia decyzji jakiego serwisu do pobierania danych z bazy u¿yæ.
+U¿ycie odpowiedniego serwisu bêdzie mo¿liwe dziêki mechanizmowi polimorfizmu (ang. \textit{polymorphism}) oraz wstrzykiwania zale¿noœci (ang. \textit{dependency injection}).
+
+\subsection{Wstrzykiwanie zale¿noœci oraz polimorfizm}
+\label{dependency_injection}
+Mechanizm wstrzykiwania zale¿noœci polega na przekazaniu do obiektu przez konstruktor wszystkich jego zale¿noœci, czyli wszystkich innych obiektów, które bêdzie on wykorzystywa³. 
+Przyk³adem wykorzystania tego mechanizmu jest klasa \textit{ProductsRestController}, która korzysta z dwóch serwisów aplikacyjnych.
+
+\begin{lstlisting}[caption=ProductsRestController]
+public class ProductsRestController {
+
+    private final ProductsWriteApplicationService writeApplicationService;
+    private final ProductsReadApplicationService readApplicationService;
+
+    public ProductsRestController(
+        final ProductsWriteApplicationService writeApplicationService,
+        final ProductsReadApplicationService readApplicationService) {
+        this.writeApplicationService = writeApplicationService;
+        this.readApplicationService = readApplicationService;
+    }
+    
+//...
+}
+\end{lstlisting}
+
+Obie zale¿noœci s¹ przekazane przez konstruktor.
+Ka¿dy z obiektów mo¿e byæ klas¹ lub interfejsem.
+U¿ycie interfejsu przy wstrzykiwaniu zale¿noœci pozwala na zastosowanie polimorfizmu, czyli wyboru jego implementacji w zale¿noœci od kontekstu.
+Dodatkowo takie podejœcie znacz¹co zwiêksza tzw. testowalnoœæ klasy (ang. \textit{testability}).
+
+Przyk³adem jest interfejs \textit{ProductsReadApplicationService}, który definiuje wymagane metody dla klas, które bêd¹ go rozszerzaæ.
+Jest to jeden z parametrów konstruktora omawianego kontrolera.
+
+\begin{lstlisting}[caption=ProductsReadApplicationService]
+public interface ProductsReadApplicationService {
+
+    List<ProductsReadModel> getProducts();
+
+    ProductsReadModel getProduct(GetByIdQuery query);
+}
+\end{lstlisting}
+
+W projekcie istniej¹ dwie klasy rozszerzaj¹ce ten interfejs: \textit{ProductsReadFromNoSqlApplicationService} do wykonywania odczytów z bazy NoSQL oraz \textit{ProductsReadFromRdbmsApplicationService} do wykonywania odczytów z relacyjnej bazy danych.
+Ka¿da z tych klas u¿ywa odpowiedniego repozytorium dla danego typu bazy.
+Implementacja interfejsu jest wybierana na podstawie ustawionej wartoœci w³aœciwoœci \textit{read.source}.
+Jest to zrealizowane za pomoc¹ adnotacji \textit{@ConditionalOnProperty}.
+
+Na listingu \ref{code:read_rdbms} oraz \ref{code:read_nosql} przedstawione s¹ obie klasy serwisów (implementacja metod na listingu zosta³a celowo pominiêta, aby zwiêkszyæ czytelnoœæ).
+
+\begin{lstlisting}[caption=ProductsReadFromRdbmsApplicationService, label=code:read_rdbms]
+@Service
+@ConditionalOnProperty(name = "read.source", havingValue = "rdbms")
+public class ProductsReadFromRdbmsApplicationService implements ProductsReadApplicationService {
+
+    private final ProductReadFromRdbmsRepository productReadRepository;
+
+    public ProductsReadFromRdbmsApplicationService(
+        final ProductReadFromRdbmsRepository productReadRepository) {
+        this.productReadRepository = productReadRepository;
+    }
+
+    @Override
+    public List<ProductReadModel> getProducts() {
+        // implementacja
+    }
+
+    @Override
+    public ProductReadModel getProduct(final GetByIdQuery query) {
+        // implementacja
+    }
+}
+\end{lstlisting}
+
+\begin{lstlisting}[caption=ProductsReadFromNoSqlApplicationService, label=code:read_nosql]
+@Service
+@ConditionalOnProperty(name = "read.source", havingValue = "nosql", matchIfMissing = true)
+public class ProductsReadFromNoSqlApplicationService implements ProductsReadApplicationService {
+
+    private final ProductReadFromNoSqlRepository productReadRepository;
+
+    public ProductsReadFromNoSqlApplicationService(
+        final ProductReadFromNoSqlRepository productReadRepository) {
+        this.productReadRepository = productReadRepository;
+    }
+
+    @Override
+    public List<ProductReadModel> getProducts() {
+        // implementacja
+    }
+
+    @Override
+    public ProductReadModel getProduct(final GetByIdQuery query) {
+        // implementacja
+    }
+}
+\end{lstlisting}
+
+Mo¿na zauwa¿yæ, ¿e ka¿dy serwis korzysta z innego repozytorium, wiêc zapisuje dane do innej bazy.
+Kluczowym elementem jest adnotacja \textit{@ConditionalOnProperty}, która na podstawie wartoœci w³aœciwoœci \textit{read.source} wybiera odpowiedni¹ implementacjê interfejsu.
+
+Wystarczy wiêc przed uruchomieniem aplikacji ustawiæ \textit{read.source=nosql}, aby odczytywaæ dane z bazy NoSQL lub \textit{read.source=rdbms}, aby dane by³y odczytywane z bazy relacyjnej.
+
+\section{Model danych do odczytu}
+W CQRS model danych przechowywany w bazie NoSQL czêsto okreœlany jest angielskim okreœleniem \textit{read model}, czyli model do odczytu.
+Struktura danych modelu do odczytu mo¿e siê znacznie ró¿niæ od tego, który zapisywany jest w bazie relacyjnej.
+Mo¿e istnieæ równie¿ wiele modeli, które na przyk³ad bêd¹ przystosowane do ró¿nych widoków.
+
+Jednak g³ówn¹ zalet¹ stosowania modelu do odczytu jest mo¿liwoœæ zapisania danych bez u¿ycia relacji.
+Wykorzystywana baza MongoDB jest baz¹ dokumentow¹, która przechowuje dane w formacie JSON.
+Format ten umo¿liwia odwzorowanie rzeczywistej struktury obiektu w bazie danych, gdy¿ mo¿liwe jest tworzenie zagnie¿d¿eñ.
+Dziêki temu zyskuje siê na wydajnoœci, gdy¿ dane do pobrania s¹ przechowywane w docelowej postaci.
+Nie ma wiêc potrzeby wykonywania ¿adnych operacji na danych w przeciwieñstwie do baz relacyjnych (³¹czenie danych po³¹czonych relacjami).
+Dane s¹ od razu gotowe do odczytu, wiêc wystarczy je jedynie pobraæ.
+
+W przyk³adowej aplikacji sklepu dane pogrupowane s¹ w bazie na dwie kolekcje.
+Jedna z nich przechowuje informacje o produktach, natomiast druga o u¿ytkownikach wraz z ich zamówieniami.
+
+\subsection{Kolekcja produktów}
+Pierwsza kolekcja o nazwie \textit{products} przechowuje informacje o produktach.
+Struktura danych jest bardzo podobna do struktury tabeli, gdy¿ jest to prosty obiekt z kilkoma polami.
+Przyk³adowy dokument produktu przechowywany jest w bazie w nastêpuj¹cy sposób:
+\begin{lstlisting}[caption=Dokument z kolekcji \textit{products}, label=code:products]
+{
+    "_id" : "d829ca68-2efa-43a3-a197-20553b98ffff",
+    "_class" : "edu.uz.inz.port.adapter.repository.read.ProductReadModel",
+    "name" : "Komputer PC",
+    "price" : "2000",
+    "description" : "Opis komputera"
+}
+\end{lstlisting}
+
+Dokumenty tworzone s¹ poprzez serializacjê obiektów do formatu JSON.
+Z wartoœci pola \textit{"\_class"} mo¿na odczytaæ, z jakiego typu obiektu powsta³ dokument.
+Na listingu \ref{code:products} przedstawiony jest obiekt klasy \textit{ProductReadModel} poddany serializacji do JSON.
+
+\subsection{Kolekcja u¿ytkowników}
+Druga stworzona w bazie kolekcja nosi nazwê \textit{customers} i przechowuje informacje o u¿ytkowniku wraz z jego zamówieniami.
+Zamówienia nie zawieraj¹ w sobie jedynie identyfikatora elementu zamówienia tak jak w przypadku bazy relacyjnej - s¹ one w nim bezpoœrednio zawarte wraz z obiektami produktów.
+W wyniku tego w ramach jednego dokumentu przechowywany jest kompletny zestaw danych na temat danego u¿ytkownika, czyli informacje o nim, jego zamówienia oraz zamówione produkty.
+
+\begin{lstlisting}[caption=Dokument z kolekcji \textit{customers}, label=code:customers]
+{
+    "_id" : "51d35b06-e881-42c8-a9b7-e0cadfbaf886",
+    "_class" : "edu.uz.inz.port.adapter.repository.read.CustomerReadModel",
+    "name" : "Krystian Dziêdzio³a",
+    "address" : {
+        "street" : "Ulica 1/23",
+        "city" : "Zielona Góra",
+        "postCode" : "12-345"
+    },
+    "balance" : "5000",
+    "orders" : [ 
+        {
+            "uuid" : "83135bd2-a1a0-4788-8aad-527f11615433",
+            "dateTime" : "2017-12-11T20:05:00.196",
+            "items" : [ 
+                {
+                    "uuid" : "33107f0f-2365-4ae4-9ba2-c8b28098e471",
+                    "quantity" : 2,
+                    "product" : {
+                        "_id" : "d829ca68-2efa-43a3-a197-20553b98ffff",
+                        "name" : "Komputer PC",
+                        "price" : "2000.00",
+                        "description" : "Opis komputera"
+                    }
+                }
+            ],
+            "paymentType" : "CASH"
+        }
+    ]
+}
+\end{lstlisting}
+
+Na listingu \ref{code:customers} ukazany jest obiekt \textit{CustomerReadModel} poddany serializacji do JSON i zapisany w bazie danych.
+Zawiera on w sobie równie¿ obiekt adresu typu \textit{AddressReadModel} oraz listê zamówieñ typu \textit{OrderReadModel}.
+Zamówienia przechowuj¹ równie¿ informacjê o elementach zamówienia (\textit{OrderItemReadModel}), a te z kolei o produktach jako obiekt typu \textit{ProductReadModel}.
+
+Mo¿na zauwa¿yæ, ¿e zapisywanie obiektu produktu w zamówieniu jest z pewnoœci¹ duplikowaniem danych, gdy¿ informacje o produktach znajduj¹ siê ju¿ w innej kolekcji \textit{products}.
+Duplikacja danych jest tutaj niezbêdna w celu uzyskania wiêkszej wydajnoœci.
+Przewa¿nie iloœæ danych nie jest problemem, gdy¿ przestrzeñ dyskowa nie jest zbyt drogim zasobem.
+Kluczowym elementem jest czêsto wydajnoœæ systemu, wiêc duplikowanie danych na rzecz lepszej wydajnoœci jest w wiêkszoœci przypadków ca³kowicie akceptowalna.
+
+\section{Synchronizacja danych}
+\label{synchro}
+Ka¿da zmiana danych wprowadzona do bazy relacyjnej musi nieœæ za sob¹ aktualizacjê danych w bazie NoSQL.
+W przeciwnym razie pobierane dane (\textit{read model}) bêd¹ niezgodne z rzeczywistym stanem systemu.
+W celu realizacji synchronizacji danych pomiêdzy obiema bazami zosta³ wykorzystany mechanizm publikacji zdarzeñ dostarczony przez Spring.
+
+Za ka¿dym razem, gdy dane ulegaj¹ zmianie, powoduje to zg³oszenie odpowiedniego zdarzenia (\textit{event}), w którym zawarte s¹ informacje o zmianach.
+Przyk³adowo, gdy zostaje dodany nowy u¿ytkownik zg³aszane jest zdarzenie mówi¹ce o stworzeniu u¿ytkownika.
+Jest to realizowane w serwisie aplikacyjnym o nazwie \textit{CustomersWriteApplicationService} przedstawionym na listingu \ref{code:CustomersWriteApplicationService}.
+
+\begin{lstlisting}[caption=CustomersWriteApplicationService, label=code:CustomersWriteApplicationService]
+@Service
+public class CustomersWriteApplicationService {
+
+    private final CustomerWriteRepository customerWriteRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
+// ...
+
+    @Transactional
+    public UUID create(final CreateCustomerCommand command) {
+        final Customer customer = saveCustomer(command, address);
+        eventPublisher.publishEvent(CustomerCreatedEvent.from(customer));
+        return customer.getUuid();
+    }
+
+// ...
+}
+\end{lstlisting}
+
+Kluczowym elementem jest tu linia 12, w której wywo³ywana jest metoda \textit{publishEvent} na obiekcie typu \textit{ApplicationEventPublisher}.
+Jest to mechanizm dostarczony przez Spring, który mo¿e zostaæ u¿yty do zg³aszania zdarzeñ.
+Mo¿liwe jest publikowanie swoich w³asnych zdarzeñ jak na przyk³ad zdarzenie o utworzeniu u¿ytkownika zdefiniowane jako klasa\textit{CustomerCreatedEvent}.
+
+\begin{lstlisting}[caption=CustomerCreatedEvent]
+public class CustomerCreatedEvent implements DomainEvent {
+
+    private final UUID uuid;
+    private final String name;
+    private final String street;
+    private final String city;
+    private final String postCode;
+    private final BigDecimal balance;
+
+// ...
+
+    public static CustomerCreatedEvent from(final Customer customer) {
+	// implementacja
+    }
+
+    public CustomerReadModel asReadModel() {
+	// implementacja
+    }
+}
+\end{lstlisting}
+
+Zdarzenie to posiada wszystkie niezbêdne dane, aby taki sam u¿ytkownik zosta³ dodany równie¿ do bazy s³u¿¹cej do odczytu.
+Dodatkowo ma zaimplementowane metody pomocnicze s³u¿¹ce do stworzenia zdarzenia z modelu oraz przekszta³cenie go do modelu s³u¿¹cego do odczytu.
+
+W celu odebrania zg³oszonego zdarzenia musi istnieæ dodatkowy komponent dedykowany do nas³uchiwania na zdarzenia oraz reagowania na nie okreœlonym zachowaniem.
+Zosta³a zaimplementowana klasa \textit{ReadModelOnDomainEventUpdater}, która realizuje tê funkcjonalnoœæ.
+Obs³uguje ona wszystkie typy zdarzeñ zg³oszone w systemie.
+Na listingu \ref{code:ReadModelOnDomainEventUpdater} zostanie zaprezentowana jedynie czêœæ dotycz¹ca tworzenia nowego u¿ytkownika.
+
+\begin{lstlisting}[caption=ReadModelOnDomainEventUpdater, label=code:ReadModelOnDomainEventUpdater]
+@Component
+public class ReadModelOnDomainEventUpdater {
+
+    private final CustomerReadModelUpdateRepository customerRepository;
+// ...
+
+    @EventListener
+    public void handle(final CustomerCreatedEvent event) {
+        customerRepository.save(event.asReadModel());
+    }
+
+// ...
+}
+\end{lstlisting}
+
+Obs³uga zdarzenia w Springu jest bardzo prosta.
+Wystarczy stworzyæ metodê, która bêdzie oznaczona adnotacj¹ \textit{@EventListener} oraz bêdzie przyjmowaæ jako argument obiekt danego zdarzenia.
+Po zg³oszeniu zdarzenia danego typu zostanie ono przechwycone przez tê metodê.
+Wystarczy tylko wykonaæ odpowiednie operacje w zale¿noœci otrzymanego zdarzenia.
+
+Reakcj¹ na otrzymanie zdarzenia o stworzeniu u¿ytkownika jest utworzenie takiego samego u¿ytkownika w bazie s³u¿¹cej do odczytu.
+Zosta³o do tego u¿yte repozytorium wykonuj¹ce operacje aktualizacji na bazie MongoDB o nazwie \textit{CustomerReadModelUpdateRepository}.
+
+\begin{lstlisting}[caption=CustomerReadModelUpdateRepository, label=code:CustomerReadModelUpdateRepository]
+@Repository
+public interface CustomerReadModelUpdateRepository extends MongoRepository<CustomerReadModel, String> {
+
+}
+\end{lstlisting}
+
+Na listingu \ref{code:CustomerReadModelUpdateRepository} przedstawione jest repozytorium rozszerzaj¹ce generyczny interfejs \textit{MongoRepository}, który posiada zaimplementowane podstawowe operacje na danych (podobnie jak \textit{CrudRepository} dla baz relacyjnych).
+
+W metodzie obs³uguj¹cej zdarzenie wystarczy jedynie przekszta³ciæ je w obiekt modelu s³u¿¹cego do odczytu wywo³uj¹c \textit{event.asReadModel()}, a nastêpnie zapisaæ otrzymane dane korzystaj¹c z metody \textit{save} udostêpnionej przez repozytorium.
+
+Dziêki tym operacjom ka¿dy nowo dodany u¿ytkownik bêdzie równie¿ zapisany w bazie NoSQL. 
+Inne operacje takie jak np. dodanie produktu, stworzenie zamówienia itp. zosta³y zaimplementowane w analogiczny sposób.
+
+\section{Tworzenie obrazu Docker z aplikacj¹}
+Chc¹c uruchomiæ swoj¹ aplikacjê w kontenerze Docker nale¿y najpierw przygotowaæ jej obraz.
+W tym celu nale¿y stworzyæ plik \textit{Dockerfile}, na podstawie którego zbudowany zostanie obraz.
+Obraz kontenera Docker z aplikacj¹ mo¿na stworzyæ w kilku prostych krokach ukazanych na listingu \ref{code:dockerfile}.
+
+\begin{lstlisting}[caption=Dockerfile, label=code:dockerfile]
+FROM openjdk:8-jdk-alpine
+ADD target/inz-0.0.1-SNAPSHOT.jar app.jar
+ENTRYPOINT exec java -jar /app.jar
+\end{lstlisting}
+
+W tym przypadku Dockerfile sk³ada siê z trzech nastêpuj¹cych linii:
+
+\begin{itemize}
+\item \textbf{FROM} - wskazuje obraz bazowy dla kontenera.
+W tym przypadku jest to \textit{openjdk:8-jdk-alpine}, który zawiera JDK (ang. \textit{Java Development Kit}), czyli narzêdzia potrzebne do tworzenia i uruchamiania aplikacji Java,
+\item \textbf{ADD} - dodanie do obrazu pliku JAR (\textit{inz-0.0.1-SNAPSHOT.jar}) z aplikacj¹ i zapisanie go pod nazw¹ \textit{app.jar},
+\item \textbf{ENTRYPOINT} - komendy, które zostan¹ wykonane przy starcie kontenera.
+W tym przypadku jest to jedynie uruchomienie pliku JAR z aplikacj¹ poleceniem \textit{java -jar}.
+\end{itemize}
+
+\subsection{Budowanie obrazu z linii komend}
+Obraz kontenera mo¿na zbudowaæ programem Docker z linii komend wykorzystuj¹c przygotowany plik Dockerfile.
+W tym celu nale¿y najpierw zbudowaæ projekt, aby stworzony zosta³ plik JAR z aplikacj¹.
+Nastêpnie nale¿y przejœæ do folderu, w którym stworzony zosta³ plik Dockerfile i wykonaæ polecenia z listingu \ref{code:dockerfile}.
+\begin{lstlisting}[caption=Budowanie oraz uruchomienie kontenera, label=code:dockerfile]
+# w katalogu projektu
+./gradlew clean build
+
+# w katalogu z plikiem Dockerfile
+docker build . -t aplikacja_inz
+
+# uruchomienie kontenera
+docker run -p 8080:8080 aplikacja_inz
+\end{lstlisting}
+
+Komenda \textit{docker build} to zbudowanie obrazu o nazwie \textit{aplikacja\_inz}, który nastêpnie mo¿e byæ uruchomiony poleceniem \textit{docker run}.
+Przy uruchomieniu nale¿y równie¿ pamiêtaæ o udostêpnieniu portu, który umo¿liwi komunikacjê z aplikacj¹, gdy¿ kontenery Docker s¹ domyœlnie odizolowane.
+
+W celu udostêpnienia portów nale¿y podczas uruchamiania dodaæ mapowanie za pomoc¹ prze³¹cznika \textit{-p port\_zewnêtrzny:port\_wewnêtrzny}.
+W tym przypadku port, na którym uruchomiona jest aplikacja, czyli 8080 zostanie udostêpniony na zewn¹trz równie¿ jako port 8080.
+
+\subsection{Budowanie obrazu za pomoc¹ Gradle}
+Budowanie obrazu z linii poleceñ co prawda nie jest trudne, jednak wymaga kilku manualnych operacji lub stworzenia odpowiedniego skryptu.
+Istnieje jednak lepsze rozwi¹zanie, które zak³ada do³¹czenie procedury budowania obrazu aplikacji do cyklu budowania projektu za pomoc¹ Gradle.
+
+Potrzebny jest jedynie dodatek \textit{gradle-docker} do Gradle oraz kilka linii konfiguracji w pliku \textit{build.gradle}.
+
+\begin{lstlisting}[caption=Konfiguracja Docker w Gradle, label=code:docker_gradle]
+buildscript {
+
+// ...
+    dependencies {
+        classpath("se.transmode.gradle:gradle-docker:1.2")
+        // ...
+    }
+}
+    
+apply plugin: 'docker'
+    
+// ...    
+
+// ### DOCKER CONFIGURATION ###
+task buildDocker(type: Docker, dependsOn: build) {
+    applicationName = jar.baseName
+    dockerfile = file("$projectDir/src/main/docker/Dockerfile")
+    doFirst {
+        copy {
+            from jar
+            into "${stageDir}/target"
+        }
+    }
+}
+\end{lstlisting}
+
+Na listingu \ref{code:docker_gradle} w linii 15 tworzone jest specjalne zadanie (\textit{task}) Gradle, które pozwoli na automatyczne zbudowanie obrazu Docker z aplikacj¹.
+Zadanie \textit{buildDocker} jest zale¿ne (\textit{dependsOn}) od zadania o nazwie \textit{build}, które s³u¿y do budowania projektu.
+Oznacza to, ¿e gdy zostanie wykonane zadanie \textit{buildDocker}, to przed nim bêdzie uruchomione równie¿ zadanie \textit{build}, które zbuduje projekt w tym równie¿ stworzy plik JAR z aplikacj¹.
+
+Dodatkowe opcje konfiguracyjne to podanie nazwy obrazu (\textit{applicationName}), wskazanie œcie¿ki do pliku Dockerfile (\textit{dockerfile}) oraz skopiowanie pliku JAR do katalogu \textit{target} znajduj¹cego siê w plikach tymczasowych Gradle.
+
+Teraz wystarczy wykonaæ jedynie polecenie \textit{./gradlew buildDocker} i obraz zostanie automatycznie zbudowany oraz dodany do lokalnego rejestru Docker, sk¹d bêdzie móg³ byæ pobrany i uruchomiony.
+
+\section{Œrodowisko uruchomieniowe}
+\label{environment}
+Uruchamiana aplikacja w podstawowej wersji bêdzie potrzebowaæ dwóch instancji baz danych:
+\begin{itemize}
+\item jedna instancja \textbf{PostgreSQL},
+\item jedna instancja \textbf{MongoDB}.
+\end{itemize}
+
+Dodatkowo aplikacja sama w sobie powinna byæ automatycznie uruchamiana w kontenerze Docker.
+Dziêki programowi Docker bazy danych nie musz¹ byæ manualnie instalowane na komputerze, a uruchomienie ca³ego œrodowiska bêdzie siê ogranicza³o jedynie do u¿ycia jednej komendy.
+
+Istnieje mo¿liwoœæ napisania rêcznie odpowiednich skryptów, jednak w znacznie prostszy sposób mo¿na to zrealizowaæ za pomoc¹ oprogramowania dedykowanego dla Docker o nazwie Docker Compose.
+
+Docker Compose umo¿liwi stworzenie pliku w formacie YAML, w którym zostan¹ wypisane wszystkie potrzebne kontenery oraz zale¿noœci pomiêdzy nimi.
+Umo¿liwi to uruchomienie ca³ego systemu, czyli aplikacji oraz obu baz danych jednym poleceniem.
+
+\begin{lstlisting}[caption=docker-compose.yml, label=code:docker-compose]
+version: '2'
+services:
+  inz-app:
+    image: edu.uz/inz:0.0.1-SNAPSHOT
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgresql
+      - mongodb
+
+  postgresql:
+    image: postgres
+    ports:
+     - "5432:5432"
+    environment:
+     - POSTGRES_PASSWORD=postgres
+     - POSTGRES_USER=postgres
+     - POSTGRES_DB=inz
+
+  mongodb:
+    image: mongo
+    ports:
+     - "27017:27017"
+    environment:
+     - MONGODB_USER=mongo
+     - MONGODB_PASS=mongo
+     - MONGODB_DATABASE=inz
+\end{lstlisting}
+
+W pliku z listingu \ref{code:docker-compose} zosta³y zdefiniowane trzy serwisy (\textit{services}), które posiadaj¹ dodane odpowiednie konfiguracje:
+
+\begin{itemize}
+\item \textbf{inz-app} - kontener z aplikacj¹ uruchomiony ze zbudowanego obrazu o nazwie \textit{edu.uz/inz:0.0.1-SNAPSHOT}.
+Dodatkowo przy uruchamianiu zostanie udostêpniony na zewn¹trz port 8080.
+Serwis aplikacji jest zale¿ny (\textit{depends\_on}) od dwóch serwisów baz danych.
+Oznacza to, ¿e zostanie on uruchomiony dopiero wtedy, gdy uruchomione zostan¹ oba kontenery z bazami danych,
+\item \textbf{posgresql} - kontener zawieraj¹cy bazê danych PostgreSQL, który zostanie uruchomiony z obrazu \textit{postgres} pobranego z repozytorium Docker.
+Dodatkowo ustawione zosta³o mapowanie portów oraz nazwa u¿ytkownika, has³o oraz nazwa bazy danych,
+\item \textbf{mongodb} - serwis bazy MongoDB.
+Kontener bêdzie uruchomiony z obrazu \textit{mongo} pobranego z oficjalnego repozytorium.
+Dodatkowo zosta³o skonfigurowane mapowanie portów oraz zmienne œrodowiskowe dla bazy danych takie jak u¿ytkownik, has³o oraz nazwa bazy danych.
+\end{itemize}
+
+Maj¹c tak przygotowany plik wystarczy jedynie przejœæ do katalogu, w którym siê on znajduje i wywo³aæ polecenie \textit{docker-compose up}.
+Spowoduje to utworzenie i uruchomienie kontenerów dla ka¿dego z serwisów.
+Po kilku sekundach aplikacja powinna byæ uruchomiona, oraz po³¹czona z dwoma bazami danych i gotowa do u¿ytku.
+Informacje o uruchomionych kontenerach mo¿na wyœwietliæ u¿ywaj¹c polecenia \textit{docker ps}.
+
+\section{Skalowanie}
+\label{scaling}
+Ostatnim wa¿nym etapem projektowania przyk³adowej aplikacji pokazuj¹cej sposób wykorzystania obu typów baz danych jest konfiguracja skalowania bazy s³u¿¹cej do odczytu.
+Samo zastosowanie bazy NoSQL powinno wp³yn¹æ pozytywnie na wydajnoœæ (zostanie to sprawdzone w testach wydajnoœciowych opisanych w rozdziale \ref{testing}).
+Jednak w celu zwiêkszenia wydajnoœci samej bazy NoSQL mo¿na wykonaæ jej skalowanie.
+
+Dziêki budowie i sposobie dzia³ania baz nierelecyjnych s¹ one przystosowane do pracy w klastrach i umo¿liwiaj¹ partycjonowanie danych.
+MongoDB posiada mechanizm skalowania o nazwie \textit{sharding}.
+
+\subsection{Idea shardingu}
+\label{sharding}
+Sharding to metoda skalowania, która zak³ada partycjonowanie danych.
+Oznacza to, ¿e dane ulegaj¹ podzieleniu i przechowywane s¹ na odrêbnych instancjach serwerów bazodanowych.
+
+Klaster baz MongoDB sk³ada siê z kilku nastêpuj¹cych elementów \cite{sharding:2017}:
+\begin{itemize}
+\item \textbf{shard} - instancja procesu \textit{mongod} (\textit{mongo daemon}).
+Mongod to g³ówny proces bazy MongoDB, czyli serwer baz danych. 
+Jest on uruchamiany jako proces dzia³aj¹cy w tle \textit{daemon}.
+Ka¿dy shard mo¿e byæ pojedyncz¹ lub kilkoma zreplikowanymi instancjami (ang. \textit{replica set}).
+To w³aœnie na shardach s¹ przechowywane dane podzielone na kawa³ki (ang. \textit{chunk}),
+\item \textbf{mongos} - proces s³u¿¹cy do kierowania ruchu do odpowiedniego sharda (ang. \textit{routing}) oraz odpowiadaj¹cy za równowa¿enie obci¹¿enia (ang. \textit{load balancing}).
+Wymagany jest przynajmniej jeden \textit{Mongos}, jednak mo¿e ich istnieæ kilka,
+\item \textbf{config server} - serwer konfiguracyjny przechowuj¹cy metadane dotycz¹ce klastra, które opisuj¹ m.in. które porcje danych (\textit{chunks}) znajduj¹ siê na ka¿dym z shardów.
+Od wersji MongoDB 3.4 serwer konfiguracyjny musi byæ uruchmiony jako \textit{replica set}. 
+\end{itemize}
+
+Architekturê ca³ego systemu po zastosowaniu skalowania za pomoc¹ shardingu ilustruje rysunek \ref{fig:feature_switch_3}
+\begin{figure}[H]
+	\centering
+		\includegraphics[width=6cm]{Rysunki/Rozdzial3/3_feature_switch.pdf}
+	\caption{Architektura systemu po zastosowaniu shardingu}
+	\label{fig:feature_switch_3}
+\end{figure}
+
+\subsection{Strategie shardingu}
+Strategie shardingu to kryterium, na podstawie którego dane bêd¹ trafiaæ do odpowiedniego sharda.
+W MongoDB istniej¹ dwie strategie shardingu.
+Ka¿da z nich jako kryterium podzia³u danych wykorzystuje tzw. klucz shardingu (ang. \textit{shard key}).
+
+\textit{Shard key} jest to pole posiadaj¹ce index (and. \textit{indexed field}) lub kilka pól, na które za³o¿ony jest wspólny index (ang. \textit{indexed compound field}), które musi istnieæ w ka¿dym dokumencie danej kolekcji.
+Ka¿dy shard posiada dynamicznie zdefiniowany zakres wartoœci kluczy shardingu, na podstawie których dane bêd¹ partycjonowane \cite{shard-keys:2017}.
+
+Przy wyborze klucza shardingu nale¿y mieæ na uwadze, ¿e wartoœæ pola, do którego przypisany jest klucz nie mo¿e siê zmieniaæ oraz po podziale danych nie jest mo¿liwa zmiana klucza na inny.
+Wybór odpowiedniego klucza shardingu powinien byæ dobrze przemyœlany, gdy¿ ma on najwiêkszy wp³yw na wydajnoœæ ca³ego klastra.
+
+\subsubsection{Hashed sharding}
+Pierwsz¹ strategi¹ shardingu jest tzw. \textit{hashed sharding}, czyli dystrybucja danych na podstawie wartoœci klucza poddanej dzia³aniu funkcji skrótu (hashuj¹cej).
+MongoDB automatycznie przelicza hashe kluczy, wiêc nie musi byæ to zaimplementowane w aplikacji.
+Dzia³anie tej strategii ilustruje rysunek \ref{fig:hashed_key}.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=12cm]{Rysunki/Rozdzial3/hashed_key.png}
+	\caption{Podzia³ danych na podstawie skrótu wartoœci klucza \cite{shard-keys:2017}}
+	\label{fig:hashed_key}
+\end{figure}
+
+\textit{Hashed sharding} zapewnia jednolite roz³o¿enie danych pomiêdzy wszystkimi shardami, gdy¿ nawet klucze o podobnych wartoœciach poddane dzia³aniu funkcji skrótu bêd¹ mia³y znacznie inne wartoœci.
+Ta strategia shardingu ma zastosowanie, gdy kluczem jest pole, którego wartoœæ zmienia siê w przewidywalny sposób np. identyfikator obiektu tworzony na podstawie sekwencji.
+Zak³adaj¹c, ¿e pierwszy shard przechowywa³by dane, których klucz znajduje siê w przedziale <1, 1000>, to pierwsze 1000 dokumentów trafi³oby do tej samej instancji bazy, a reszta pozosta³aby pusta.
+
+To podejœcie ma równie¿ swoje minusy.
+W przypadku, gdy istnieje przechowywania potrzeba danych, których wartoœæ klucza (niepoddana dzia³aniu funkcji skrótu) znajduje siê w jakimœ konkretnym przedziale, wtedy zapytanie najprawdopodobniej bêdzie wysy³ane do wielu instancji bazy danych.
+W tym przypadku lepszym podejœciem jest wybór dystrybucji danych na podstawie zakresu, czyli tzw. \textit{ranged sharding}.
+
+\subsubsection{Ranged sharding}
+Drug¹ strategi¹ shardingu jest tzw. \textit{ranged sharding}, czyli podzia³ danych na podstawie zakresu, w którym znajduje siê wartoœæ klucza shardingu.
+Wynika z tego, ¿e dokumenty, które podsiadaj¹ podobne wartoœci klucza bêd¹ umieszczone w tej samej instancji bazy.
+Ideê tej strategii ilustruje rysunek \ref{fig:ranged_key}.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=12cm]{Rysunki/Rozdzial3/ranged_key.png}
+	\caption{Podzia³ danych na podstawie zakresu wartoœci klucza \cite{shard-keys:2017}}
+	\label{fig:ranged_key}
+\end{figure}
+
+W tej strategii wybór klucza jest równie¿ bardzo wa¿ny, gdy¿ nieodpowiedni klucz bêdzie skutkowa³ w nierównimiernym podziale danych pomiêdzy wszystkie shardy.
+Przynosi ona efekty w momencie, gdy istnieje potrzeba pobrania danych o kluczu z danego przedzia³u, gdy¿ istnieje wtedy bardzo du¿e prawdopodobieñstwo, ¿e wszystkie te dane znajdowaæ siê bêd¹ na tym samym shardzie.
+Pozwoli to unikn¹æ przeszukiwania wszystkich innych dokumentów.
+
+\subsection{Przygotowanie œrodowiska do shardingu}
+Do tej pory w ca³ym systemie sklepu uruchomione by³y jedynie 3 kontenery: aplikacja, baza PostgreSQL oraz baza MongoDB.
+W celu konfiguracji skalowania za pomoc¹ shardingu potrzebne bêd¹ dodatkowe kontenery z instancjami bazy MongoDB, które bêd¹ s³u¿y³y ró¿nym celom.
+
+Minimalne wymagania to:
+\begin{itemize}
+\item 1 kontener - mongos (\textit{router, load ballancer}),
+\item 1 kontener - serwer konfiguracyjny,
+\item 2 kontenery - shardy.
+\end{itemize}
+
+Jest to minimalna iloœæ kontenerów potrzebnych do konfiguracji shardingu.
+Musi istnieæ wiêcej ni¿ jeden shard.
+W przeciwnym wypadku dane by³yby przetrzymywane w ten sam sposób jak w pojedynczej instancji bazy.
+Mongos oraz serwer konfiguracyjny nie by³yby wtedy potrzebne, gdy¿ by³oby wiadomo, ¿e zapytania mog¹ byæ kierowane zawsze do konkretnej, pojedynczej instancji bazy, gdy¿ tam w³aœnie znajduj¹ siê wszystkie dane.
+
+W celu utworzenia dodatkowych kontenerów zostanie równie¿ u¿yte narzêdzie Docker Compose.
+Dodanie nowych kontenerów odbywa siê poprzez dodanie kolejnych serwisów do pliku \textit{docker-compose.iml}.
+
+\begin{lstlisting}[caption=docker-compose.iml, label=code:docker-compose-sharding]
+version: '2'
+services:
+  inz-app:
+    image: edu.uz/inz:0.0.1-SNAPSHOT
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgresql
+      - mongos
+
+  postgresql:
+    image: postgres
+    ports:
+     - "5432:5432"
+    environment:
+     - POSTGRES_PASSWORD=postgres
+     - POSTGRES_USER=postgres
+     - POSTGRES_DB=inz
+
+  mongos:
+    image: mongo
+    command: mongos --config /etc/mongos.yml --port 27017
+    volumes:
+     - './mongos.yml:/etc/mongos.yml'
+    ports:
+     - '27017:27017'
+     
+  mongo-config:
+    image: mongo
+    command: mongod --config /etc/mongo-config.yml --port 27018
+    volumes:
+     - './mongo-config.yml:/etc/mongo-config.yml'
+    ports:
+     - '27018:27018'
+
+  mongo-shard-1:
+    image: mongo
+    command: mongod --config /etc/mongo-shard-1.yml --port 27021
+    volumes:
+     - './mongo-shard-1.yml:/etc/mongo-shard-1.yml'
+    ports:
+     - '27021:27021'
+
+  mongo-shard-2:
+    image: mongo
+    command: mongod --config /etc/mongo-shard-2.yml --port 27022
+    volumes:
+     - './mongo-shard-2.yml:/etc/mongo-shard-2.yml'
+    ports:
+     - '27022:27022'
+
+\end{lstlisting}
+
+Na listingu \ref{code:docker-compose-sharding} zosta³a zaprezentowana kompletna konfiguracja podstawowych serwisów potrzebnych do wykonania shardingu.
+Serwis aplikacji oraz serwis bazy PostgreSQL zosta³y pozostawione bez zmian.
+Nowoœci¹ s¹ 4 dodatkowe serwisy tworzone z obrazu o nazwie \textit{mongo}.
+Do ka¿dego z nich zosta³ równie¿ przypisany osobny port.
+
+Warto zauwa¿yæ, ¿e \textit{mongos} pe³ni¹cy rolê routera, do którego bêd¹ kierowane wszystkie zapytania jest uruchomiony na porcie 27017.
+Jest to standardowy port, na którym uruchamiana jest baza MongoDB.
+Zosta³ on równie¿ u¿yty w poprzedniej konfiguracji z jednym kontenerem bazy (listing \ref{code:docker-compose}).
+Dziêki temu nie s¹ wymagane ¿adne zmiany konfiguracyjne w aplikacji, gdy¿ sposób komunikacji pozostaje ten sam - wszystkie operacje odczytu kierowane s¹ do jednej instancji bazy Mongo (\textit{mongos}) jak na rysunku \ref{fig:feature_switch_3}.
+
+Ka¿dy z serwisów Mongo musi zostaæ odpowiednio skonfigurowany, aby móg³ pe³niæ wyznaczon¹ rolê.
+Odbywa siê to poprzez uruchomienie procesu bazy danych w odpowiednim trybie u¿ywaj¹c za³¹czonych do kontenerów plików konfiguracyjnych.
+
+Wpis definiuj¹cy serwis \textit{mongos} wygl¹da nastêpuj¹co:
+
+\begin{lstlisting}[caption=Konfiguracja serwisu \textit{mongos}, label=code:mongos]
+mongos:
+    image: mongo
+    command: mongos --config /etc/mongos.yml --port 27017
+    volumes:
+     - './mongos.yml:/etc/mongos.yml'
+    ports:
+     - '27017:27017'
+\end{lstlisting}
+
+Kluczowym elementem konfiguracji przedstawionej na listingu \ref{code:mongos} s¹ dwa atrybuty:
+
+\begin{itemize}
+\item \textbf{command} - definicja komend, które maj¹ zostaæ uruchomione przy starcie kontenera.
+Zdefiniowana komenda w ka¿dym serwisie Mongo s³u¿y do uruchomienia procesu bazy danych z odpowiedni¹ konfiguracj¹ pobran¹ z pliku (prze³¹cznik \textit{-{}-config}) na odpowiednim porcie (\textit{-{}-port}),
+\item \textbf{volumes} - definicja folderów lub plików, które bêd¹ do³¹czone do kontenera.
+W przypadku serwisów Mongo s¹ to pliki konfiguracyjne u¿ywane do uruchomienia ich w okreœlonym trybie.
+\end{itemize}
+
+Pliki konfiguracji uruchamiania serwisów zosta³y przedstawione na listingach \ref{code:config-mongos}, \ref{code:config-config} oraz \ref{code:config-shard}
+
+\begin{lstlisting}[caption=Konfiguracja uruchamiania mongos, label=code:config-mongos]
+sharding:
+  configDB: mongo-config/mongo-config:27018
+\end{lstlisting}
+
+W konfiguracji mongos nale¿y jedynie wskazaæ adres serwera konfiguracyjnego.
+Definiuje siê go w atrybucie \textit{configDB} w formacie \textit{<replSetName>/<host>:<port>}, gdzie \textit{replSetName} jest nazw¹ \textit{replica set} zdefiniowan¹ w pliku \ref{code:config-config}, \textit{host} to adres kontenera (mo¿e byæ to jego nazwa) oraz \textit{port} to oczywiœcie port, na którym uruchomiona jest us³uga.
+
+\begin{lstlisting}[caption=Konfiguracja uruchamiania serwera konfiguracyjnego, label=code:config-config]
+sharding:
+  clusterRole: configsvr
+replication:
+  replSetName: mongo-config
+\end{lstlisting}
+
+
+\begin{lstlisting}[caption=Konfiguracja uruchamiania pojedynczego sharda, label=code:config-shard]
+sharding:
+  clusterRole: shardsvr
+replication:
+  replSetName: mongo-shard-1
+\end{lstlisting}
+
+W przypadku serwera konfiguracyjnego oraz poszczególnych shardów wystarczy zdefiniowaæ rolê jak¹ pe³niæ bêdzie serwis (\textit{configvr} lub \textit{shardsvr}) oraz przypisaæ nazwê zbioru replik (\textit{replica set}).
+
+Po przygotowaniu wszystkich plików nale¿y wykonaæ jedynie polecenie \textit{docker-compose up}, aby uruchomiæ ca³e œrodowisko, na którym nastêpnie bêdzie mo¿na skonfigurowaæ sposób rozdzielania danych pomiêdzy poszczególne shardy.
+
+W celu zwiêkszenia liczby shardów nale¿y jedynie dodaæ kolejne serwisy w pliku \textit{docker-compose.iml} i uwzglêdniæ je w póŸniejszej konfiguracji.
+We ten sposób mo¿na rozbudowaæ klaster o dowoln¹ liczbê shardów tym samym zwiêkszaj¹c jego wydajnoœæ.
+
+\subsection{Konfiguracja shardingu}
+Po uruchomieniu ca³ego œrodowiska nale¿y jedynie skonfigurowaæ sharding przy u¿yciu wybranej strategii.
+W zwi¹zku z tym, ¿e konfiguracji nale¿y dokonaæ na ka¿dym z elementów klastra rêczna konfiguracja mog³aby byæ czasoch³onna.
+W tym celu zosta³ przygotowany skrypt \textit{bash}, który po³¹czy siê z ka¿dym kontenerem i wykona na nim operacje konfiguracyjne zawarte w osobnych skryptach \textit{JavaScript} obs³ugiwanych przez MongoDB.
+
+Konfiguracja shardingu bêdzie siê wiêc sprowadza do wywo³ania jednego skryptu \textit{setup-sharding.sh} zamieszonego w listingu \ref{code:setup-sharding.sh}.
+
+\begin{lstlisting}[caption=setup-sharding.sh, label=code:setup-sharding.sh]
+#!/bin/sh
+host_ip=ip route get 1 | awk '{print $NF;exit}'
+
+# Configure config server
+mongo --host $host_ip --port 27018 < scripts/configure-config-server.js
+
+# Configure shard-1 server
+mongo --host $host_ip --port 27021 < scripts/configure-shard-1-server.js
+
+# Configure shard-2 server
+mongo --host $host_ip --port 27022 < scripts/configure-shard-2-server.js
+
+# Configure mongos server
+sleep 3
+mongo --host $host_ip --port 27017 < scripts/configure-mongos-server.js
+\end{lstlisting}
+
+Skrypt \textit{setup-sharding.sh} pobiera adres zewnêtrzny adres IP komputera i zapisuje go w zmiennej \textit{host\_ip}.
+Jest to adres, który s³u¿y jako brama dla kontenerów Docker.
+Nawi¹zuj¹c po³¹czenie z tym adresem oraz odpowiednim portem uzyskamy po³¹czenie z kontenerem.
+
+W pierwszym kroku skrypt ³¹czy siê z serwerem konfiguracyjnym za pomoc¹ konsolowego klienta MongoDB o nazwie \textit{mongo}, a nastêpnie w kontenerze wywo³uje komendy konfiguracyjne zawarte w pliku \textit{configure-config-server.js} zaprezentowanym na listingu \ref{code:configure-config-server.js}.
+
+\begin{lstlisting}[caption=configure-config-server.js, label=code:configure-config-server.js]
+rs.initiate(
+    {
+        _id: "mongo-config",
+        configsvr: true,
+        members: [
+            {_id: 0, host: "mongo-config:27018"}
+        ]
+    }
+);
+
+exit;
+\end{lstlisting}
+
+Konfiguracja polega jedynie na zdefiniowaniu zestawu replik (\textit{replica set}) serwera konfiguracyjnego.
+W tym wypadku serwer konfiguracyjny bêdzie uruchomiony jako pojedyncza instancja znajduj¹ca siê pod adresem \textit{mongo-config:27018}.
+W celach testowych nie jest wymagana replikacja serwera, jednak w œrodowiskach produkcyjnych warto uruchamiaæ zreplikowane serwery w celu zwiêkszenia niezawodnoœci.
+
+Kolejny krok dotyczy konfiguracji poszczególnych shardów, która jest bardzo podobna do serwera konfiguracyjnego.
+Wystarczy jedynie zdefiniowaæ zestaw replik dla ka¿dego sharda.
+Przyk³ad skryptu konfiguracyjnego dla pierwszego sharda znajduje siê na listingu \ref{code:configure-shard-1.js}.
+
+\begin{lstlisting}[caption=configure-shard-1-server.js, label=code:configure-shard-1.js]
+rs.initiate(
+    {
+        _id: "mongo-shard-1",
+        members: [
+            {_id: 0, host: "mongo-shard-1:27021"}
+        ]
+    }
+);
+
+exit;
+\end{lstlisting}
+
+Najistotniejszy element konfiguracji odbywa siê na serwerze \textit{mongos}.
+To w³aœnie tam konfiguruje siê na ilu shardach bêd¹ zapisywaæ siê dane oraz jakie strategie shardowania oraz klucze zostan¹ u¿yte.
+
+Skrypt z przyk³adowym sposobem konfiguracji shardingu na serwerze \textit{mongos} znajduje siê na listingu \ref{code:configure-mongos-server.js}.
+
+\begin{lstlisting}[caption=configure-mongos-server.js, label=code:configure-mongos-server.js]
+sh.addShard("mongo-shard-1/mongo-shard-1:27021");
+sh.addShard("mongo-shard-2/mongo-shard-2:27022");
+
+sh.enableSharding("inz");
+sh.shardCollection("inz.products", {_id: "hashed"});
+sh.shardCollection("inz.customers", {_id: "hashed"});
+
+exit;
+\end{lstlisting}
+
+W skrypcie \textit{configure-mongos-server.js} zosta³o zaprezentowane w jaki sposób skonfigurowaæ sharding zapisuj¹cy dane na dwóch shardach.
+Dodawanie poszczególnych shardów odbywa siê za pomoc¹ komendy \textit{sh.addShard()}.
+Sharding musi zostaæ aktywowany dla konkretnej bazy danych poleceniem \textit{sh.enableSharding()}.
+Po wykonaniu tych kroków mo¿liwe jest ustawienie shardingu na konkretnej kolekcji u¿ywaj¹c okreœlonego klucza i strategii hashowania.
+W tym przyk³adzie shardingowi zosta³y poddane kolekcje \textit{products} oraz \textit{customers} z bazy \textit{inz}.
+W obu przypadkach kluczem jest pole \textit{\_id}, a strategi¹ shardingu jest dystrybucja na podstawie wartoœci hasha (\textit{hashed sharding}).
+
+\section{Testy wydajnoœciowe}
+\label{testing}
+Ostatnim etapem jest przeprowadzenie testów wydajnoœciowych zaproponowanego rozwi¹zania za pomoc¹ narzêdzia \textit{Apache JMeter}.
+Umo¿liwi¹ one pokazanie w jaki sposób wzrasta wydajnoœæ aplikacji stosuj¹c zaprezentowane rozwi¹zanie.
+Testom zostanie poddana jedynie czêœæ aplikacji s³u¿¹ca do odczytu danych, gdy¿ zapis zawsze bêdzie wykonywany na bazie relacyjnej.
+
+Testy wydajnoœciowe zostan¹ podzielone na kilka etapów.
+Przede wszystkim zostanie sprawdzona wydajnoœæ dotycz¹ca wyszukiwania produktów oraz wyszukiwania u¿ytkowników wraz ze wszystkimi ich danymi.
+
+W przypadku produktów sytuacja jest bardzo prosta, gdy¿ jest to tylko pojedyncza tabela z danymi.
+Drugi przypadek testowy jest bardziej z³o¿ony, gdy¿ odczyt danych o u¿ytkownikach wraz z ich danymi wymaga zebrania danych z kilku Ÿróde³. 
+W relacyjnej bazie danych s¹ to tabele przechowuj¹ce informacje o u¿ytkowniku, jego zamówieniach, pozycjach zamówienia oraz produktach.
+Wymaga to wykonanie wiêkszej iloœci operacji wyszukiwania oraz ³¹czenia danych.
+W tej sytuacji baza NoSQL powinna osi¹gn¹æ znacznie wiêksz¹ wydajnoœæ.
+Dodatkowo zostanie pokazane jak skalowanie bazy NoSQL dodatkowo wp³ywa na wydajnoœæ ca³ej aplikacji.
+
+\subsection{Plan testów}
+Testy zosta³y przeprowadzone w nastêpuj¹cych etapach:
+\begin{itemize}
+\item Zapis przyk³adowych danych do bazy relacyjnej - dziêki synchronizacji dane te trafi¹ równie¿ do bazy NoSQL,
+\item Wykonanie testów wydajnoœciowych na aplikacji uruchomionej w trybie odczytu z bazy relacyjnej (prze³¹cznik \textit{read.source=rdbms}),
+\item Prze³¹czenie aplikacji w tryb odczytu z bazy NoSQL (\textit{read.source=nosql}) przy uruchomionej jednej instancji bazy MongoDB i wykonanie tego samego zestawu testów.
+\item Uruchomienie klastra MongoDB sk³adaj¹cego siê z routera, serwera konfiguracyjnego oraz 4 instancji przechowuj¹cych dane i ponowne przeprowadzenie testów wydajnoœciowych,
+\item Porównanie otrzymanych wyników.
+\end{itemize}
+
+\subsection{Przygotowanie danych}
+W celu przeprowadzenia testów wydajnoœciowych obie bazy powinny posiadaæ znacz¹c¹ iloœæ danych.
+Zosta³ stworzony skrypt, który umo¿liwi³ dodanie okreœlonej iloœci zró¿nicowanych danych.
+
+Dane, którymi zosta³a zainicjalizowana baza danych to:
+\begin{itemize}
+\item \textbf{100 000} produktów,
+\item \textbf{100 000} u¿ytkowników, z których ka¿dy posiada 1-3 zamówieñ. W ka¿dym z zamówieñ znajduje siê 1-3 produktów.
+\end{itemize}
+
+Podczas zapisu danych do bazy wszystkie identyfikatory zosta³y zapisane do dwóch osobnych plików tekstowych - odpowiednio dla produktów i u¿ytkowników.
+Pliki te pos³u¿¹ jako dane testowe, aby za ka¿dym razem poszukiwany by³ inny wpis.
+Jest to o wiele lepsze rozwi¹zanie, ni¿ wyszukiwanie ca³y czas jednego wpisu, gdy¿ baza danych mo¿e podj¹æ próbê optymalizacji takiego zapytania, co da³oby niemiarodajne wyniki.
+
+Po dodaniu danych do bazy maj¹ one nastêpuj¹ce rozmiary:
+\begin{itemize}
+\item \textbf{PostgreSQL} - 107 MB
+\item \textbf{MongoDB} - 153,7 MB
+\end{itemize}
+
+Mo¿na zauwa¿yæ, i¿ na skutek duplikacji danych oraz narzutu pamiêciowego z uwagi na przechowywanie danych w dokumentach JSON baza danych MongoDB zajmuje oko³o 50\ wiêcej przestrzeni dyskowej.
+
+\subsection{Testy odczytu z bazy relacyjnej}
+W pocz¹tkowym etapie przetestowana zosta³a wydajnoœæ serwisu, który wszystkie operacje odczytu wykonuje na relacyjnej bazie danych PostgreSQL. 
+Wyniki wydajnoœci wyszukiwania produktów oraz u¿ytkowników zaprezentowane zosta³y w odpowiednio w tabelach \ref{tab:rdbms_products} oraz \ref{tab:rdbms_customers}.
+
+\begin{table}[H]
+\centering
+\caption{Czasy odpowiedzi bazy relacyjnej - wyszukiwanie produktu}
+\label{tab:rdbms_products}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{Iloœæ w¹tków}} & \multirow{2}{*}{\textbf{Iloœæ zapytañ}} & \multicolumn{3}{c|}{\textbf{Czas odpowiedzi (ms)}} \\ \cline{3-5} 
+                                       &                                         & \textbf{Œredni}   & \textbf{Min}   & \textbf{Max}  \\ \hline
+10                                     & 100 000                                  & 2                 & 0              & 23            \\ \hline
+10                                     & 100 000                                  & 2                 & 0              & 43            \\ \hline
+20                                     & 100 000                                  & 4                 & 1              & 41            \\ \hline
+20                                     & 100 000                                  & 4                 & 0              & 42            \\ \hline
+40                                     & 100 000                                  & 8                 & 0              & 108           \\ \hline
+40                                     & 100 000                                  & 8                 & 0              & 61            \\ \hline
+80                                     & 100 000                                 & 17                & 0              & 264           \\ \hline
+80                                     & 100 000                                 & 15                & 0              & 169           \\ \hline
+\end{tabular}
+\end{table}
+
+Œrednie czasy odpowiedzi zapytañ o proste dane (produkty - tab. \ref{tab:rdbms_products}) s¹ satysfakcjonuj¹ce nawet przy du¿ym obci¹¿eniu, gdy¿ wynosz¹ maksymalnie 15 ms.
+
+\begin{table}[H]
+\centering
+\caption{Czasy odpowiedzi bazy relacyjnej - wyszukiwanie u¿ytkownika}
+\label{tab:rdbms_customers}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{Iloœæ w¹tków}} & \multirow{2}{*}{\textbf{Iloœæ zapytañ}} & \multicolumn{3}{c|}{\textbf{Czas odpowiedzi (ms)}} \\ \cline{3-5} 
+                                       &                                         & \textbf{Œredni}   & \textbf{Min}   & \textbf{Max}  \\ \hline
+10                                     & 50 000                                  & 236               & 34             & 694           \\ \hline
+10                                     & 50 000                                  & 249               & 31             & 736           \\ \hline
+20                                     & 50 000                                  & 377               & 74             & 825           \\ \hline
+20                                     & 50 000                                  & 382               & 72             & 913           \\ \hline
+40                                     & 100 000                                  & 802               & 27             & 2588          \\ \hline
+40                                     & 100 000                                  & 777               & 17             & 1540          \\ \hline
+80                                     & 100 000                                  & 1459              & 244            & 2890          \\ \hline
+80                                     & 100 000                                  & 1484              & 341            & 3624          \\ \hline
+\end{tabular}
+\end{table}
+
+Mo¿na jednak zauwa¿yæ, ¿e w przypadku zapytañ o bardziej z³o¿one dane (informacje o u¿ytkowniku - tab. \ref{tab:rdbms_customers}) œrednie czasy odpowiedzi znacznie siê zwiêkszaj¹. 
+Dochodz¹ nawet do 1,5 sekundy przy wiêkszym obci¹¿eniu.
+
+\subsection{Testy odczytu z bazy NoSQL}
+Nastêpnym etapem jest przetestowanie wydajnoœci serwisu, który wszystkie operacje odczytu wykonuje na nierelacyjnej bazie danych MongoDB.
+Wyniki wydajnoœci wyszukiwania produktów oraz u¿ytkowników zaprezentowane zosta³y w odpowiednio w tabelach \ref{tab:nosql_products} oraz \ref{tab:nosql_customers}.
+
+\begin{table}[H]
+\centering
+\caption{Czasy odpowiedzi bazy NoSQL - wyszukiwanie produktu}
+\label{tab:nosql_products}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{Iloœæ w¹tków}} & \multirow{2}{*}{\textbf{Iloœæ zapytañ}} & \multicolumn{3}{c|}{\textbf{Czas odpowiedzi (ms)}} \\ \cline{3-5} 
+                                       &                                         & \textbf{Œredni}   & \textbf{Min}   & \textbf{Max}  \\ \hline
+10                                     & 100 000                                 & 1                 & 0              & 19            \\ \hline
+10                                     & 100 000                                 & 1                 & 0              & 12            \\ \hline
+20                                     & 100 000                                 & 3                 & 0              & 30            \\ \hline
+20                                     & 100 000                                 & 3                 & 0              & 23            \\ \hline
+40                                     & 100 000                                 & 6                 & 0              & 90            \\ \hline
+40                                     & 100 000                                 & 5                 & 0              & 100           \\ \hline
+80                                     & 100 000                                 & 11                & 0              & 226           \\ \hline
+80                                     & 100 000                                 & 11                & 0              & 355           \\ \hline
+\end{tabular}
+\end{table}
+
+Wyszukiwanie produktów w bazie NoSQL jest nieznacznie bardziej wydajne, ni¿ w przypadku bazy relacyjnej.
+W tym przypadku ró¿nice nie s¹ zbyt du¿e, gdy¿ aplikacja u¿ywaj¹c bazy relacyjnej równie¿ zwraca³a odpowiedzi w akceptowalnym czasie.
+
+\begin{table}[H]
+\centering
+\caption{Czasy odpowiedzi bazy NoSQL - wyszukiwanie u¿ytkownika}
+\label{tab:nosql_customers}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{Iloœæ w¹tków}} & \multirow{2}{*}{\textbf{Iloœæ zapytañ}} & \multicolumn{3}{c|}{\textbf{Czas odpowiedzi (ms)}} \\ \cline{3-5} 
+                                       &                                         & \textbf{Œredni}   & \textbf{Min}   & \textbf{Max}  \\ \hline
+10                                     & 100 000                                 & 1                 & 0              & 23            \\ \hline
+10                                     & 100 000                                 & 2                 & 0              & 23            \\ \hline
+20                                     & 100 000                                 & 4                 & 0              & 58            \\ \hline
+20                                     & 100 000                                 & 3                 & 0              & 32            \\ \hline
+40                                     & 100 000                                 & 7                 & 0              & 148           \\ \hline
+40                                     & 100 000                                 & 7                 & 0              & 130           \\ \hline
+80                                     & 100 000                                 & 14                & 0              & 268           \\ \hline
+80                                     & 100 000                                 & 15                & 0              & 356           \\ \hline
+\end{tabular}
+\end{table}
+
+Du¿¹ ró¿nicê w œrednich czasach odpowiedzi mo¿na zauwa¿yæ, gdy porówna siê wyniki wyszukiwania informacji o u¿ytkowniku.
+Aplikacja u¿ywaj¹ca bazy NoSQL przy najwiêkszym obci¹¿eniu zwraca³a odpowiedŸ na zapytanie œrednio w 15 ms.
+Jest to blisko 100 razy szybciej, ni¿ w przypadku bazy relacyjnej.
+
+\subsection{Testy odczytu z klastra baz NoSQL}
+Wyniki uzyskane podczas testowania aplikacji u¿ywaj¹cej bazê danych NoSQL s¹ satysfakcjonuj¹ce.
+Jednak w przypadku, gdy dane uros³y by do ogromnych rozmiarów oraz obci¹¿enie aplikacji znacznie wzros³o, nawet baza danych NoSQL mog³aby napotkaæ problemy wydajnoœciowe.
+
+Aplikacja zosta³a skonfigurowana tak, aby korzysta³a z klastra baz MongoDB sk³adaj¹cego siê z 4 shardów.
+Otrzymane wyniki prezentuj¹ tabele \ref{tab:cluster_products} oraz \ref{tab:cluster_customers}.
+
+\begin{table}[H]
+\centering
+\caption{Czasy odpowiedzi klastra baz NoSQL - wyszukiwanie produktu}
+\label{tab:cluster_products}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{Iloœæ w¹tków}} & \multirow{2}{*}{\textbf{Iloœæ zapytañ}} & \multicolumn{3}{c|}{\textbf{Czas odpowiedzi (ms)}} \\ \cline{3-5} 
+                                       &                                         & \textbf{Œredni}   & \textbf{Min}   & \textbf{Max}  \\ \hline
+40                                     & 100 000                                 & 1                 & 0              & 15            \\ \hline
+40                                     & 100 000                                 & 1                 & 0              & 21           \\ \hline
+80                                     & 100 000                                 & 1                & 0              & 63           \\ \hline
+80                                     & 100 000                                 & 1                & 0              & 55           \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Czasy odpowiedzi klastra baz NoSQL - wyszukiwanie produktu}
+\label{tab:cluster_customers}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{Iloœæ w¹tków}} & \multirow{2}{*}{\textbf{Iloœæ zapytañ}} & \multicolumn{3}{c|}{\textbf{Czas odpowiedzi (ms)}} \\ \cline{3-5} 
+                                       &                                         & \textbf{Œredni}   & \textbf{Min}   & \textbf{Max}  \\ \hline
+40                                     & 100 000                                 & 2                 & 0              & 53            \\ \hline
+40                                     & 100 000                                 & 2                 & 0              & 51           \\ \hline
+80                                     & 100 000                                 & 3                & 0              & 183           \\ \hline
+80                                     & 100 000                                 & 4                & 0              & 221           \\ \hline
+\end{tabular}
+\end{table}
+
+Zgodnie z oczekiwaniami zastosowanie partycjonowania danych w klastrze baz NoSQL znacznie podnios³o wydajnoœæ aplikacji.
+Przy najwy¿szym testowanym obci¹¿eniu aplikacja wyszukiwa³a informacji o u¿ytkowniku œrednio w 3 ms, co jest bardzo dobrym wynikiem przy takiej iloœci danych.
+
+\subsection{Podsumowanie}
+Otrzymane wyniki wskazuj¹ wyraŸnie, ¿e relacyjne bazy danych przechowuj¹ce du¿¹ iloœæ informacji napotykaj¹ na pewne problemy wydajnoœciowe.
+Stosuj¹c architekturê CQRS mo¿liwe jest wykorzystanie bazy NoSQL do wykonywania odczytów danych, co znacznie poprawia wydajnoœæ ca³ej aplikacji.
+Dodatkowo wykorzystuj¹c mechanizm skalowania bazy MongoDB o nazwie \textit{sharding} mo¿na dodatkowo zwiêkszyæ wydajnoœæ wykonywanych operacji odczytu.
+
+Porównanie wydajnoœci pod wzglêdem œrednich czasów odpowiedzi przy najwy¿szym testowanym obci¹¿eniu (80 w¹tków) dla RDBMS, NoSQL oraz klastra NoSQL zosta³y zaprezentowane odpowiednio na rysunkach \ref{fig:rdbms_graph}, \ref{fig:nosql_graph} oraz \ref{fig:cluster_graph}.
+
+\begin{figure}[]
+	\centering
+		\includegraphics[width=14cm]{Rysunki/Rozdzial3/rdbms_customers_80_threads_small.jpg}
+	\caption{Wydajnoœæ relacyjnej bazy danych}
+	\label{fig:rdbms_graph}
+\end{figure}
+
+\begin{figure}[]
+	\centering
+		\includegraphics[width=14cm]{Rysunki/Rozdzial3/nosql_customers_80_threads_small.jpg}
+	\caption{Wydajnoœæ pojedynczej bazy NoSQL}
+	\label{fig:nosql_graph}
+\end{figure}
+
+\begin{figure}[]
+	\centering
+		\includegraphics[width=14cm]{Rysunki/Rozdzial3/cluster_customers_80_threads_small.jpg}
+	\caption{Wydajnoœæ klastra baz NoSQL}
+	\label{fig:cluster_graph}
+\end{figure}
+
+Na zaprezentowanych wykresach widaæ, ¿e œredni czas odpowiedzi bazy relacyjnej wynosi ok. \textbf{1500 ms} (1,5 s).
+U¿ywaj¹c bazy NoSQL do odczytu danych mo¿na zwiêkszyæ wydajnoœæ 100-krotnie, gdy¿ œredni czas odpowiedzi w takiej konfiguracji wynosi jedynie \textbf{15 ms}.
+Zastosowanie klastra baz z 4 instancjami shardów pozwala na dodatkowe prawie 5-krotne zwiêkszenie wydajnoœci wzglêdem pojedynczego serwera bazy NoSQL - œredni czas odpowiedzi ok. \textbf{3 ms}, czyli jest to ok. 500 razy szybciej, ni¿ baza relacyjna.
+
+Warto jednak zauwa¿yæ, ¿e wyniki uzyskane przy pojedynczej instancji bazy NoSQL s¹ ju¿ zadowalaj¹ce dla takiej iloœci danych oraz przy za³o¿onym obci¹¿eniu.
+Zastosowanie klastra w tym wypadku co prawda zwiêksza wydajnoœæ aplikacji, jednak wprowadza dodatkowe problemy administracyjne zwi¹zane z zarz¹dzaniem wieloma kontenerami.
+Decyzja o u¿yciu klastra baz danych musi byæ wiêc odpowiednio uzasadniona oraz przemyœlana.
+Nale¿y j¹ stosowaæ jedynie w przypadku, gdy zastosowanie pojedynczej instancji bazy danych NoSQL staje siê niewydajne - o wiele wiêksza iloœæ danych i znacznie wiêksze obci¹¿enie.
+

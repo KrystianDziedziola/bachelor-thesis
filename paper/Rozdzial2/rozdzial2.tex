@@ -1,0 +1,533 @@
+\chapter{Podstawy NoSQL}
+\label{chapter_2}
+
+\section{Definicja oraz pochodzenie NoSQL}
+
+Termin NoSQL zosta³ u¿yty po raz pierwszy w 1998 roku \cite{Fowler:2013}, jednak wtedy nie mia³ on nic wspólnego z bazami danych, które wspó³czeœnie okreœla siê mianem NoSQL.
+Pocz¹tkowo okreœlenie to pos³u¿y³o do nazwania relacyjnej bazy danych, która po prostu nie u¿ywa³a standardu SQL.
+
+Dopiero w 2009 roku termin ten zosta³ powtórnie u¿yty, tym razem w zupe³nie innym kontekœcie.
+Okreœlenie NoSQL pos³u¿y³o jako nazwa konferencji zorganizowanej przez Johana Oskarssona w dniu 11.06.2009 w San Francisco.
+By³y na niej prezentowane nowe typy bazy danych takie jak np. Hypertable, HBase czy Cassandra.
+Bazy te stanowi³y alternatywê dla tradycyjnych baz SQL, gdy¿ by³y nierelacyjne oraz do przechowywania danych nie u¿ywa³y tabel.
+Mia³y one byæ odpowiedzi¹ na niedoskona³oœci baz relacyjnych oraz rozwi¹zywaæ problemy tych¿e baz.
+Od tego czasu nazwa NoSQL zosta³a przyjêta jako okreœlenie w³aœnie takich typów baz danych \cite{Fowler:2013}.
+
+W wyniku tego, ¿e termin ten powsta³ dosyæ spontanicznie nie ma jego œcis³ej definicji.
+Jako NoSQL mo¿na okreœliæ ruch, który mia³ na celu odnalezienie alternatyw dla tradycyjnych baz relacyjnych.
+Eric Evans, który równie¿ uczestniczy³ w konferencji w San Francisco powiedzia³ póŸniej, ¿e 
+``g³ównym celem szukania alternatyw jest to, ¿e istnieje potrzeba rozwi¹zania problemów, z którymi spotykaj¹ siê relacyjne bazy danych''.
+\cite{Evans:2009}
+
+Mimo, i¿ nie istnieje œcis³a definicja terminu NoSQL istniej¹ kryteria, które pozwalaj¹ okreœliæ pewne bazy mianem NoSQL.
+Martin Fowler powiedzia³, ¿e 
+``NoSQL jest przypadkowym neologizmem - nie posiada œciœle okreœlonej definicji. Nie ma równie¿ kogoœ, kto móg³by zdefiniowaæ to pojêcie. Jedyne co mo¿na zrobiæ, to omówiæ ich pewne wspólne cechy.'' \cite{Fowler:2013}
+
+Oczywiœcie przed pojawieniem siê baz, które aktualnie okreœlane s¹ mianem NoSQL mia³y miejsce próby stworzenia innych typów baz danych, takich jak np. bazy obiektowe czy bazy danych oparte na XML.
+Nie zosta³y one jednak zaklasyfikowane do NoSQL ze wzglêdu na to, ¿e nie by³y one prób¹ odnalezienia odpowiedzi na problemy baz relacyjnych, a jedynie czymœ niezale¿nym, stworzonym do innych zastosowañ.
+Tego typu bazy nie bêd¹ wiêc omawiane w tej pracy.
+
+
+
+
+
+\section{Charakterystyka}
+Czym wiêc charakteryzuj¹ siê bazy danych okreœlane mianem NoSQL?
+Mo¿na wyró¿niæ kilka ich g³ównych cech:
+\begin{itemize}
+\item nie posiadaj¹ okreœlonego schematu danych,
+\item brak relacji - tabel oraz wiêzów integralnoœci,
+\item przystosowane do pracy w klastrach,
+\item nie u¿ywaj¹ jêzyka SQL,
+\item stworzone na potrzebny Internetu XXI wieku.
+\end{itemize}
+
+\subsection{Brak schematu}
+G³ówn¹ cech¹ baz danych NoSQL jest to, ¿e nie posiadaj¹ okreœlonego schematu danych.
+W przypadku baz typu SQL tabele gwarantuj¹, ¿e dane posiadaj¹ prawid³ow¹ strukturê.
+Ka¿d¹ porcjê danych, któr¹ chcemy umieœciæ w bazie relacyjnej musimy najpierw przygotowaæ tak, aby odpowiada³y ustalonemu schematowi.
+W przypadku potrzeby umieszczenia danych, które maj¹ inn¹ strukturê, ni¿ stworzone tabele, nale¿y zmodyfikowaæ schemat bazy danych.
+Mo¿e to jednak okazaæ siê problematyczne i czasoch³onne.
+
+Natomiast, gdy chcemy zapisaæ dane do bazy NoSQL nie musimy przejmowaæ siê struktur¹ danych.
+Je¿eli istnieje potrzeba dodania nowego pola do konkretnej porcji danych nie niesie to za sob¹ zmiany schematu bazy.
+Jest to szczególnie przydatne, gdy mamy do czynienia z danymi, które nie posiadaj¹ spójnej struktury,
+gdy¿ brak schematu umo¿liwia tworzenie tzw. heterogenicznych (ang. \textit{heterogenous}) struktur danych.
+
+Przyspiesza to równie¿ proces tworzenia oprogramowania, szczególnie na wczesnych etapach projektu, 
+gdy struktura bazy danych mo¿e dynamicznie ulegaæ zmianom.
+W takiej sytuacji programista nie musi poœwiêcaæ czasu na zajmowanie siê takimi technicznymi problemami jak zmiana struktury bazy.
+Zamiast tego mo¿e skupiæ siê na tym co jest wa¿ne, czyli na implementacji logiki biznesowej aplikacji.
+
+\subsection{Brak relacji}
+Kolejn¹ cech¹ baz NoSQL jest to, ¿e nie u¿ywaj¹ one wiêzów integralnoœci do ³¹czenia danych, które s¹ w pewien sposób ze sob¹ zwi¹zane.
+Czêsto istnieje jednak potrzeba, ¿eby po³¹czyæ ze sob¹ jakieœ zestawy danych.
+Przyk³adem mo¿e byæ zamówienie w sklepie internetowym.
+W przypadku zakupu kilku produktów w ramach jednego zamówienia, ka¿dy z produktów powinien byæ powi¹zany z g³ównym zamówieniem.
+
+W bazach relacyjnych istnia³by tabele przechowuj¹ce osobno poszczególne produkty oraz tabela zamówieñ.
+Ka¿dy z produktów by³by po³¹czony z zamówieniem za pomoc¹ relacji.
+Potrzeba wprowadzania relacji wynika z tego, i¿ dane przechowywane w tabelach nie mog¹ posiadaæ zagnie¿d¿eñ, gdy¿ tabela jest p³ask¹ struktur¹ danych.
+
+Jak jednak dokonaæ tego w bazach NoSQL?
+Dziêki temu, ¿e bazy NoSQL obs³uguj¹ struktury danych posiadaj¹ce zagnie¿d¿enia, mo¿na przechowywaæ dane w bardziej naturalny sposób - s¹ one skupiane w formie tzw. agregatów. 
+
+Pojêcie agregatu (ang. \textit{aggregate}) wywodzi siê z ksi¹¿ki Erica Evansa pt. \textit{Domain-Driven Design} \cite{Evans:2004}.
+Wed³ug Evansa agregat, to zbiór powi¹zanych ze sob¹ danych, które s¹ traktowane jako jednostka.
+Bazy NoSQL korzystaj¹ z idei agregatów, gdy¿ w³aœnie w taki sposób przechowuj¹ dane.
+Nawi¹zuj¹c do przyk³adu z zamówieniem sklepowym, to w³aœnie zamówienie jest agregatem, który scala (agreguje) wszystkie powi¹zane z nim produkty.
+W konsekwencji dane te bêd¹ przechowywane w bazie danych jako nieroz³¹czna ca³oœæ, a nie tak jak w przypadku baz relacyjnych - rozbite na osobne tabele.
+Eliminuje to potrzebê wykonywania na bazie operacji ³¹czenia danych (ang. \textit{join}), co znacznie upraszcza tworzenie zapytañ s³u¿¹cych do pobierania danych oraz wprowadza znacz¹cy wzrost wydajnoœci.
+
+Dane w bazach NoSQL s¹ czêsto przechowywane w formacie JSON (ang. \textit{JavaScript Object Notation}).
+Omawiane zamówienie sklepowe w tym formacie mog³oby wygl¹daæ nastêpuj¹co:
+\begin{lstlisting}
+{
+  "order": {
+    "id": 1,
+    "name": "zamówienie_1",
+    "items": [
+      {
+        "id": 400400,
+        "name": "Komputer PC",
+        "price": {
+          "value": 3000,
+          "currency": "PLN"
+        }
+      },
+      {
+        "id": 300300,
+        "name": "Monitor",
+        "price": {
+          "value": 800,
+          "currency": "PLN"
+        }
+      }
+    ]
+  }  
+}
+\end{lstlisting}
+
+Jak mo¿na zauwa¿yæ, poszczególne produkty (\textit{items}) s¹ przechowywane bezpoœrednio wewn¹trz zamówienia (\textit{order}).
+Rysunek \ref{struct_diff} pokazuje ró¿nice w sposobie przechowywania danych w bazach typu SQL oraz NoSQL.
+
+\begin{figure}[h!]
+  \centering
+  \subfloat[Tabele po³¹czone relacjami - SQL]{\label{fig:sqlStruct}\includegraphics[width=0.45\textwidth]{Rysunki/Rozdzial2/SQL_data_structure.pdf}}
+  \hspace{2cm}
+  \subfloat[Agregaty - NoSQL]{\label{fig:noSqlStruct}\includegraphics[width=0.35\textwidth]{Rysunki/Rozdzial2/NoSQL_data_structure.pdf}}
+  \caption{Schemat struktury danych dla poszczególnych typów baz danych}
+  \label{struct_diff}
+\end{figure}
+
+\subsection{Rezygnacja z SQL}
+Jêzyk SQL zosta³ stworzony do pracy z danymi, które posiadaj¹ strukturê wykorzystywan¹ w relacyjnych bazach danych, czyli przechowywane s¹ w formie tabel po³¹czonych ze sob¹ relacjami.
+W bazach NoSQL istnieje ca³kowicie inna struktura danych, która ró¿ni siê w zale¿noœci od rodzaju bazy NoSQL.
+Zosta³o to opisane w rozdziale \autoref{rozdzial:rodzajeBaz}. 
+
+Nastêpstwem przechowywania danych w zupe³nie inny sposób jest to, ¿e jêzyk SQL nie znajduje zastosowania w bazach NoSQL, 
+gdy¿ jest on przystosowany do pracy z danymi w zupe³nie innej postaci.
+U¿ywanie jêzyka SQL by³oby jedynie problematyczne i nie przynosi³oby ¿adnych korzyœci. 
+Bazy NoSQL posiadaj¹ stosunkowo proste API (ang. \textit{Application Programming Interface}), które s³u¿y do przeprowadzania operacji na danych.
+
+Mimo, ¿e standard SQL nie jest u¿ywany, to niektóre bazy danych NoSQL takie jak np. Cassandra u¿ywaj¹ jêzyków, 
+które wywodz¹ siê z jêzyka SQL. W przypadku Cassandry jest to jêzyk CQL (ang. \textit{Cassandra Query Language}).
+
+\subsection{Przystosowanie do pracy w klastrach}
+Kolejn¹ bardzo istotn¹ cech¹ jest przystosowanie baz danych NoSQL do pracy w klastrach.
+
+Tradycyjne bazy relacyjne zosta³y zaprojektowane z myœl¹ o pracy na tylko jednej maszynie.
+Wszystkie dane musz¹ znajdowaæ siê na jednym serwerze z uwagi na m.in. mechanizmy zapewniania integralnoœci danych, które posiadaj¹ bazy SQL.
+
+Istniej¹ specjalne bazy danych SQL, które posiadaj¹ wsparcie dla pracy w klastrach np. Microsoft SQL Server lub Oracle RAC, 
+jednak te rozwi¹zania dzia³aj¹ poprzez wspó³dzielenie przestrzeni dyskowej pomiêdzy poszczególnymi maszynami w klastrze.
+Niesie to jednak za sob¹ podatnoœæ na awariê ca³ego klastra, gdy system plików ulegnie uszkodzeniu.
+
+Oczywiœcie istnieje mo¿liwoœæ przechowywania danych w bazach SQL na kilku niezale¿nych serwerach (ang. \textit{sharding}). 
+Wad¹ tego podejœcia jest to, ¿e gdy aplikacja chce pobraæ z bazy dane musi wiedzieæ dok³adnie, na którym serwerze siê one znajduj¹.
+Dodatkowo uniemo¿liwia to korzystanie z zapytañ, które ³¹cz¹ dane znajduj¹ce siê na oddzielnych maszynach. Niemo¿liwe jest równie¿ wykorzystanie transakcji czy zapewnienie integralnoœci danych rozmieszczonych na osobnych serwerach.
+Martin Fowler pisze, ¿e ludzie, którzy próbowali uruchamiaæ bazy relacyjne w klastrach czêsto mówi¹, ¿e jest to bardzo nienaturalne podejœcie.
+\cite{Fowler:2013}
+
+Bazy danych typu NoSQL zosta³y zaprojektowane tak, aby praca w klastrach by³a dla nich czymœ naturalnym.
+Umo¿liwia to struktura danych oparta na agregatach oraz to, ¿e rezygnuj¹ z niektórych mechanizmów zapewniania integralnoœci danych na rzecz
+tzw. ewentualnej spójnoœci danych (ang. \textit{eventual consistency)}, co zosta³o opisane w rozdziale \autoref{eventual_consistency}.
+
+Korzyœciami wynikaj¹cymi z tego faktu, ¿e bazy NoSQL s¹ przystosowane do pracy w klastrach jest znacznie lepsza skalowalnoœæ, 
+ni¿ w przypadku baz relacyjnych oraz odpornoœæ na awarie. Skalowalnoœæ zosta³a opisana w rozdziale \autoref{rozdzial:skalowanie}.
+
+
+\subsection{Stworzone na potrzeby XXI wieku}
+Jak ju¿ zosta³o powiedziane, na przestrzeni lat powsta³o wiele prób stworzenia nowych typów baz danych, które bêd¹ ró¿niæ siê od tradycyjnych baz relacyjnych.
+Pomimo, ¿e bazy te posiadaj¹ niektóre cechy, dziêki którym mo¿na by je by³o zaklasyfikowaæ do NoSQL, to istnieje pewien czynnik, który nie pozwala okreœliæ ich tym terminem.
+
+Bardzo wa¿n¹ charakterystyk¹ baz danych NoSQL jest to, ¿e powsta³y one na potrzeby Internetu XXI wieku.
+Oznacza to, ¿e g³ówn¹ motywacj¹ do stworzenia tego typu baz by³o rozwi¹zanie problemów, z którymi zaczê³y zmagaæ siê relacyjne bazy danych wkraczaj¹c w erê tzw. Internetu rzeczy (ang. \textit{Internet of Things}).
+
+Przyczyny powstania ideologii NoSQL zostani¹ bardziej szczegó³owo omówione w rozdziale  \autoref{rozdzial:dlaczegoNoSQL}.
+
+
+\section{Przyczyny powstania NoSQL}
+\label{rozdzial:dlaczegoNoSQL}
+\subsection{Pierwsze bazy NoSQL}
+Zosta³a ju¿ przedstawiona geneza terminu NoSQL, jednak sk¹d wziê³y siê pierwsze bazy danych typu NoSQL?
+
+Wraz z pocz¹tkiem XXI wieku nasta³a nowa era Internetu.
+W dzisiejszych czasach prawie ka¿dy ma dostêp do sieci.
+Oznacza to, ¿e serwisy internetowe zyskuj¹ z dnia na dzieñ coraz wiêcej u¿ytkowników, dlatego istnieje potrzeba magazynowania oraz przetwarzania coraz wiêkszej iloœci danych.
+
+Najwiêksze serwisy internetowe w pierwszej kolejnoœci zauwa¿y³y, ¿e relacyjne bazy danych nie s¹ przystosowane do tak du¿ej iloœci danych. 
+Firmy Google oraz Amazon, które posiadaj¹ ogromn¹ liczbê u¿ytkowników postanowi³y stworzyæ swoje w³asne bazy danych, które by³yby przystosowane do tzw. \textit{Big Data}, czyli przechowywania oraz przetwarzania wielkiej iloœci danych. 
+Google stworzy³o bazê o nazwie \textit{Bigtable}, natomiast w Amazon powsta³a baza \textit{Dynamo}.
+By³y to pierwsze bazy danych, które mog³y sprostaæ wymaganiom stawianym przez Internet XXI wieku.
+
+\subsection{Skalowanie}
+\label{rozdzial:skalowanie}
+Pierwszym i zarazem najwa¿niejszym z wymagañ stawianym bazom danych u¿ywanych w aplikacjach internetowych jest skalowalnoœæ.
+Skalowalnoœæ oznacza zdolnoœæ systemu do rozbudowy i przystosowania siê do narastaj¹cego obci¹¿enia.
+
+Serwis posiadaj¹cy coraz wiêcej u¿ytkowników w koñcu napotka problemy wydajnoœciowe.
+Nale¿y wtedy rozwa¿yæ zwiêkszenie wydajnoœci serwisu, a w szczególnoœci bazy danych.
+Mo¿na tego dokonaæ poprzez skalowanie.
+ 
+Istniej¹ dwa typy skalowania:
+\begin{itemize}
+\item skalowanie w pionie (ang. \textit{vertical scaling})
+\item skalowanie w poziomie (ang. \textit{horizontal scaling}).
+\end{itemize}
+
+Pierwszy typ skalowania, czyli skalowanie w pionie polega na tym, ¿e posiadaj¹c jeden serwer wyposa¿amy go w wiêksz¹ moc obliczeniow¹, np.
+poprzez dodanie wiêkszej liczby procesorów, pamiêci operacyjnej czy te¿ rozbudowê przestrzeni dyskowej.
+Zalet¹ tego podejœcia jest jego prostota, jednak niesie za sob¹ kilka powa¿nych wad.
+Przede wszystkim jest to stosunkowo drogie podejœcie, gdy¿ ceny sprzêtu rosn¹ nieproporcjonalnie wzglêdem ich wydajnoœci.
+Dodatkowo istnieje pewna granica jak bardzo rozbudowaæ mo¿na jedn¹ maszynê, gdy¿ do jednego serwera mo¿na do³o¿yæ tylko skoñczon¹ iloœæ procesorów oraz innych komponentów.
+
+Drugim, znaczenie wydajniejszym podejœciem jest skalowanie w poziomie.
+Polega ono na tym, ¿e zamiast zwiêkszaæ moc obliczeniow¹ jednego serwera, nale¿y stworzyæ tzw. klaster (ang. \textit{cluster}), czyli sieæ po³¹czonych ze sob¹ komputerów, które pracuj¹ razem jako jedna, potê¿na maszyna.
+Zalet¹ klastrów jest to, ¿e s¹ bardzo dobrze skalowalne.
+Kiedy wystêpuje potrzeba zwiêkszenia wydajnoœci klastra wystarczy do³o¿yæ do niego kolejny komputer.
+Dodatkowo klastry s¹ bardziej odporne na awariê, gdy¿ szansa na to, ¿e wszystkie maszyny w tej samej chwili ulegn¹ awarii s¹ znikome.
+Uszkodzenie jednej maszyny nie wp³ywa znacz¹co na pracê ca³ego klastra.
+
+Mo¿na zauwa¿yæ, ¿e skalowanie w poziomie daje wiele korzyœci i umo¿liwia prostsz¹ rozbudowê.
+Niestety, relacyjne bazy danych s¹ przystosowane jedynie do pracy na jednej maszynie i wykorzystanie ich do pracy w klastrze jest bardzo trudne.
+Z kolei bazy typu NoSQL zosta³y stworzone w³aœnie w tym celu, dlatego umo¿liwiaj¹ one znacznie lepsz¹, prostsz¹ oraz tañsz¹ mo¿liwoœæ skalowania. Jest to jeden z g³ównych argumentów na to, aby w aplikacji internetowej maj¹cej problemy z wydajnoœci¹ u¿yæ w³aœnie bazy NoSQL.
+
+Na rysunku \ref{scaling_types} przedstawione s¹ oba rodzaje skalowania.
+\begin{figure}[h!]
+  \centering
+  \subfloat[SQL - Skalowanie w pionie]{\label{fig:sqlScale}\includegraphics[width=0.30\textwidth]{Rysunki/Rozdzial2/vertical.png}}
+  \hspace{2cm}
+  \subfloat[NoSQL - Skalowanie w poziomie]{\label{fig:noSqlScale}\includegraphics[width=0.35\textwidth]{Rysunki/Rozdzial2/horizontal.png}}
+  \caption{Rodzaje skalowania}
+  \label{scaling_types}
+\end{figure}
+
+
+\subsection{Niezgodnoœæ impedancji}
+Kolejnym powodem powstania baz danych typu NoSQL jest problem, który w jêzyku angielskim nosi nazwê \textit{impedance mismatch}.
+Termin ten zosta³ przet³umaczony na jêzyk polski jako \textit{niezgodnoœæ impedancji} \cite{Computerworld:2017}, jednak nazwa sama w sobie brzmi dosyæ enigmatycznie.
+Jest to problem dotycz¹cy z³ego odzwierciedlenia struktury danych w bazach SQL.
+
+Za przyk³ad mo¿na wzi¹æ dane reprezentuj¹ce szczegó³y zamówienia w sklepie internetowym, które zosta³y pokazane na rysunku \ref{fig:logical_structure}.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=6cm]{Rysunki/Rozdzial2/logical_structure.pdf}
+	\caption{Przyk³adowe dane zamówienia}
+	\label{fig:logical_structure}
+\end{figure}
+
+Przedstawione dane s¹ jedn¹ logiczn¹ struktur¹, gdy wyœwietlane s¹ na interfejsie u¿ytkownika, sk³adaj¹ siê one równie¿ na jedn¹ wspóln¹ ca³oœæ, gdy przechowywane s¹ jako obiekty w pamiêci oraz gdy implementowane s¹ w kodzie przez programistê.
+Nie jest jednak mo¿liwe zapisanie do bazy SQL danych w zaprezentowanej strukturze, gdy¿ tabele przechowuj¹ jedynie proste typy danych, które nie mog¹ posiadaæ zagnie¿d¿eñ.
+W procesie zapisywania oraz odczytywania danych z bazy relacyjnej dane musz¹ ulegaæ wiêc zmianie struktury, czyli tzw. mapowaniu (ang. \textit{mapping}).
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=16cm]{Rysunki/Rozdzial2/impedance_mismatch.pdf}
+	\caption{Impedance mismatch - niezgodnoœæ struktury danych}
+\end{figure}
+
+W³aœnie na tym polega problem okreœlany jako \textit{impedance mismatch}.
+Jest to niezgodnoœæ pomiêdzy modelem relacyjnym a rzeczywist¹ strukturz¹ danych.
+Takie podejœcie reprezentacji danych w bazie niesie za sob¹ kilka powa¿nych wad.
+
+Mapowanie danych do modelu relacyjnego jest konieczne, jednak powoduje pewne problemy.
+Z uwagi na du¿¹ popularnoœæ obiektowych jêzyków programowania, preferowany jest obiektowy sposób przedstawiania oraz przechowywania danych.
+Dzielenie danych i umieszczanie ich w tabelach, a nastêpnie scalanie ich w ca³oœæ przy próbach pobrania niesie za sob¹ dodatkowe komplikacje.
+Jest to szczególnie uci¹¿liwe dla rozbudowanych struktur danych.
+
+Problem ten nie jest w dzisiejszych czasach a¿ tak uci¹¿liwy z uwagi na biblioteki s³u¿¹ce do mapowania relacyjno-obiektowego, 
+czyli ORM (ang. object-relational mapping).
+Przyk³adem biblioteki ORM jest \textit{Hibernate}.
+
+Biblioteki te co prawda znacznie upraszczaj¹ tworzenie zapytañ do bazy danych, jednak nios¹ za sob¹ niewielkie problemy wydajnoœciowe.
+Nowe rozwi¹zania s¹ w stanie konstruowaæ stosunkowo wydajne zapytania, jednak przewa¿nie nie s¹ one optymalne.
+Lepsze wyniki mo¿na uzyskaæ id¹c trudniejsz¹ drog¹, czyli pisz¹c zapytania SQL rêcznie.
+
+Kolejnym problemem relacyjnego modelu danych jest wydajnoœæ.
+Operacje ³¹czenia danych (ang. \textit{join}) w dzisiejszych bazach danych s¹ odpowiednio zoptymalizowane i dzia³aj¹ wydajnie, jednak sama potrzeba dzielenia oraz ³¹czenia danych powoduje spadki wydajnoœci w porównaniu do sytuacji, w której mo¿na unikn¹æ wykonywania tych operacji.
+
+Bazy typu NoSQL dziêki strukturze danych w formie agregatów pozwalaj¹ unikn¹æ problemu mapowania danych.
+Umo¿liwia to osi¹gniêcie znacznie wiêkszej wydajnoœci przy operacjach zapisu i odczytu danych oraz u³atwia korzystanie z bazy danych, co przek³ada siê na wydajnoœæ programistów, gdy¿ nie musz¹ oni traciæ czasu na pisanie skomplikowanych zapytañ SQL.
+
+\section{Porównanie w³aœciwoœci}
+Relacyjne bazy danych ró¿ni¹ siê od NoSQL pod wieloma wzglêdami.
+Najistotniejsz¹ ró¿nic¹ s¹ w³aœciwoœci poszczególnych typów baz danych.
+
+\subsection{ACID}
+Bazy danych SQL dziêki transakcyjnoœci oferuj¹ du¿¹ niezawodnoœæ. 
+Definiuje siê ich cztery w³aœciwoœci okreœlane akronimem ACID (ang. \textit{Atomicity, Consistency, Isolation, Durability}) \cite{acid:2017}.
+\begin{itemize}
+\item \textit{Atomicity} - atomowoœæ transakcji. Oznacza to, ¿e operacje wykonywane w obrêbie jednej transakcji powinny byæ atomowe, czyli niepodzielne.
+W przypadku wyst¹pienia b³êdu w którejkolwiek z operacji, ca³a transakcja powinna zostaæ anulowana i nie powinny byæ wprowadzone ¿adne zmiany. 
+System posiadaj¹cy tê w³asnoœæ powinien zapewniaæ atomowoœæ transakcji bez wzglêdu na typ i przyczynê b³êdu. 
+Wlicza siê w to równie¿ awarie zasilania i sprzêtowe oraz awarie systemu,
+\label{consistency}
+\item \textit{Consistency} - spójnoœæ danych. 
+Jest to w³aœciwoœæ zapewniaj¹ca, ¿e dane po wykonaniu transakcji zostan¹ zmienione tylko i wy³¹cznie w dozwolony sposób i pozostan¹ w prawid³owym stanie.
+Oznacza to, ¿e ka¿de zapisywane dane musz¹ spe³niaæ zdefiniowane regu³y takie jak ograniczenia (ang. \textit{constraints}),
+\item \textit{Isolation} - izolacja transakcji.
+W³aœciwoœæ ta zapewnia, ¿e wyniki transakcji wykonywanych wielow¹tkowo (równolegle) bêd¹ takie same jak w przypadku wykonania ich sekwencyjnie (jedna po drugiej).
+Skutkuje to tym, ¿e poszczególne transakcje nie maj¹ dostêpu do niekompletnych zmian wprowadzanych przez inne transakcje,
+\item \textit{Durability} - trwa³oœæ danych.
+Oznacza to, ¿e w momencie, gdy transakcja zostanie wykonana, zmiany które zosta³y wprowadzone nie powinny byæ utracone np. w przypadku wyst¹pienia awarii.
+W celu obrony przed utrat¹ zmian w przypadku odciêcia zasilania rezultaty wykonywanej transakcji musz¹ byæ przechowywane w pamiêci nieulotnej (ang. \textit{non-volatile memory}).
+\end{itemize}
+
+\subsection{Spójnoœæ danych}
+Spójnoœæ danych w bazach jest czymœ bardzo wa¿nym, a wrêcz wydawa³oby siê, ¿e niezbêdnym.
+Czasami istniej¹ jednak sytuacje, w których trzeba zrezygnowaæ z zapewnienia stuprocentowej spójnoœci danych na rzecz innych w³aœciwoœci.
+
+Przewa¿nie mo¿liwe jest zaprojektowanie systemu w taki sposób, aby unikn¹æ niespójnoœci danych. 
+Czêsto jednak wi¹¿e siê to z du¿ymi poœwiêceniami odnoœnie innych parametrów systemu takich jak wydajnoœæ b¹dŸ skalowalnoœæ.
+Przy projektowaniu systemu nale¿y zwróciæ uwagê jak wa¿na jest spójnoœæ danych w kontekœcie danej aplikacji.
+
+W relacyjnych bazach danych mechanizmem zapewniaj¹cym spójnoœæ danych s¹ transakcje.
+S¹ one niezawodne, jednak nios¹ za sob¹ dosyæ du¿e problemy wydajnoœciowe.
+Ju¿ nawet w kontekœcie tego typu baz mo¿na zaobserwowaæ rezygnacjê z próby zapewnienia stuprocentowej spójnoœci danych.
+Czêsto systemy transakcyjne maj¹ mo¿liwoœæ zmniejszenia stopnia izolacji w celu zwiêkszenia wydajnoœci.
+ 
+Niektóre wielkie firmy takie jak np. \textit{eBay} czy \textit{Facebook} musia³y zast¹piæ czêœæ baz relacyjnych bazami NoSQL, aby ich serwisy dzia³a³y z chocia¿by akceptowaln¹ prêdkoœci¹. \cite{Strauch:2010}
+
+\subsection{Teoria CAP}
+Teoria CAP (ang. \textit{Consistency, Availibility, Partition tolerance}) zosta³a zaproponowana przez Erica Brewera w 2000 roku \cite{Brewer:2000} a nastêpnie udowodniona kilka lat póŸniej przez Setha Gilberta oraz Nancy Lynch. 
+
+Podstaw¹ teorii Brewera s¹ trzy w³aœciwoœci systemów rozproszonych:
+\begin{itemize}
+\item \textit{Consistency} - spójnoœæ danych.
+Oznacza, ¿e dane mog¹ byæ zmienione jedynie w zdefiniowany sposób i zawsze musz¹ byæ poprawne wzglêdem wyznaczonych regu³. 
+Jest to jedna z cech ACID \autoref{consistency},
+\item \textit{Availability} - dostêpnoœæ. 
+Jest to cecha systemu, która mówi o tym, ¿e gwarantuje on odpowiedŸ (nie bêd¹c¹ b³êdem) na ka¿de odebrane ¿¹danie,
+\item \textit{Partition tolerance} - odpornoœæ na partycjonowanie.
+Oznacza to, ¿e system jest odporny na sytuacjê, w której np. w wyniku awarii klaster straci ³¹cznoœæ pomiêdzy niektórymi wêz³ami i zostanie podzielony na dwie odrêbne czêœci, które nie mogê siê ze sob¹ komunikowaæ. 
+Ilustruje to poni¿szy rysunek.
+\end{itemize}
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=10cm]{Rysunki/Rozdzial2/partition.pdf}
+		\label{fig:partition}
+	\caption{Podzia³ klastra w wyniku awarii}
+\end{figure}
+
+Teoria CAP mówi o tym, ¿e nie jest mo¿liwe zapewnienie wszystkich trzech w³aœciwoœci systemu.
+Systemy jedno-serwerowe, takie jak wiêkszoœæ baz relacyjnych okreœla siê jako CA (\textit{Consistency, Availability}), czyli charakteryzuj¹ce siê spójnoœci¹ danych oraz dostêpnoœci¹, jednak nie gwarantuj¹ one odpornoœci na partycjonowanie, gdy¿ ciê¿ko jest mówiæ o podziale w przypadku jednej maszyny.
+
+Bazy danych NoSQL przewa¿nie pracuj¹ w klastrach, wiêc wymagana jest odpornoœæ na partycjonowanie.
+Zgodnie z teori¹ CAP nale¿y wtedy dokonaæ wyboru pomiêdzy dostêpnoœci¹ a spójnoœci¹, gdy¿ w systemie rozproszonym mo¿na zapewniæ jedynie dwie z trzech cech.
+
+\subsection{Warunkowa spójnoœæ danych}
+\label{eventual_consistency}
+Bazy danych NoSQL nie oferuj¹ w³aœciwoœci ACID.
+Czasami ich w³aœciwoœci s¹ okreœlane akronimem BASE (ang. \textit{Basically Available, Soft-state, Eventual consistency}).
+
+BASE oznacza, ¿e baza zapewnia wysok¹ dostêpnoœæ oraz odpornoœæ na partycjonowanie kosztem spójnoœci danych.
+Nie oznacza to, ¿e przechowywane dane s¹ ca³kowicie niespójne, gdy¿ by³oby to niedopuszczalne.
+Zamiast spójnoœci pod postaci¹ tej zdefiniowanej w teorii CAP bazy NoSQL oferuj¹ tzw. warunkow¹ spójnoœæ (ang. \textit{Eventual consistency}).
+
+Zasada warunkowej spójnoœci mówi o tym, ¿e pobierane dane nie zawsze musz¹ byæ aktualne. 
+Gwarantuje jednak, ¿e dane te bêd¹ spójne po up³yniêciu skoñczonej iloœci czasu (przewa¿nie od kilku milisekund do kilku sekund).
+Jest to spowodowane tym, ¿e mo¿liwy jest odczyt danych podczas wykonywania ich aktualizacji np. na jednym wêŸle klastra dane zosta³y zaktualizowane i zmiana musi byæ rozpropagowana na inne wêz³y, z których w tym czasie dane mog¹ zostaæ pobrane.
+Wydaje siê to byæ czymœ niedopuszczalnym, jednak okazuje siê, ¿e w wiêkszoœci przypadków jest to ca³kowicie akceptowalne.
+
+Warunkowa spójnoœæ danych przedstawiona jest na rysunku \ref{fig:asd}.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=0.40\textwidth]{Rysunki/Rozdzial2/eventual_consistency.pdf}
+	\caption{Zasada warunkowej spójnoœci danych}
+	\label{fig:asd}
+\end{figure}
+
+
+Przyk³adem takiej sytuacji mo¿e byæ korzystanie przez u¿ytkownika z wyszukiwarki artyku³ów na blogu lub wiadomoœci w serwisie z wiadomoœciami.
+Jak czêsto zdarza siê, ¿e u¿ytkownik wyszuka artyku³ akurat w momencie jego dodania?
+Jest to raczej rzadka sytuacja, a nawet je¿eli ma ju¿ miejsce, to nie jest to nic z³ego, gdy¿ zanim zd¹¿y on odœwie¿yæ stronê, dane bêd¹ ju¿ aktualne.
+
+Kolejnym przyk³adem mo¿e byæ zakup produktu w sklepie internetowym. 
+U¿ytkownik widzi, ¿e produkt jest dostêpny (choæ ostatnia sztuka zosta³a przed momentem sprzedana) i naciska przycisk \textit{kup}.
+System oczywiœcie nie pozwoli zakupiæ produktu, gdy¿ w tym momencie powinna byæ zapewniona spójnoœæ danych, aby nie doprowadziæ do zakupu przedmiotów, które s¹ niedostêpne.
+Po odœwie¿eniu strony u¿ytkownik zobaczy, ¿e niestety produkt nie jest ju¿ dostêpny.
+
+Z kolei aplikacj¹, która nie mo¿e zrezygnowaæ z absolutnej spójnoœci danych jest na przyk³ad serwis bankowy, w którym u¿ytkownik nie mo¿e mieæ mo¿liwoœci wyp³acenia z konta pieniêdzy, których aktualnie nie posiada.
+
+Przyk³ad ze sklepem internetowym pokazuje, ¿e nawet w obrêbie jednej aplikacji istniej¹ miejsca, w których ewentualna spójnoœæ jest wystarczaj¹ca, natomiast w innych jest nieakceptowalna.
+Widaæ tutaj, ¿e do zbudowania takiej aplikacji najlepiej nadawa³y by siê oba typy baz danych.
+Okazuje siê, ¿e jest to mo¿liwe do zrealizowania.
+Takie podejœcie do budowania aplikacji nosi nazwê \textit{Polyglot Persistance} i oznacza u¿ywanie ró¿nych typów baz danych w jedynym systemie, b¹dŸ w jednej aplikacji.
+
+Przyk³adem architektury aplikacji wykorzystuj¹cej oba typy baz danych jest architektura o nazwie CQRS (ang. \textit{Command Query Responsibility Segregation}), która zostanie omówiona w rozdziale \autoref{cqrs}.
+
+\section{Rodzaje baz NoSQL}
+\label{rozdzial:rodzajeBaz}
+
+Termin NoSQL jest okreœleniem, które obejmuje kilka rodzajów baz danych.
+Poszczególne typy ró¿ni¹ siê od siebie sposobem sk³adowania informacji.
+Przewa¿nie dzieli siê je na cztery grupy:
+\begin{itemize}
+\item klucz-wartoœæ,
+\item dokumentowe,
+\item grafowe,
+\item kolumnowe.
+\end{itemize}
+
+W tej czêœci zostan¹ pokrótce omówione wszystkie wymienione typy baz danych NoSQL.
+
+\subsection{Klucz-wartoœæ}
+Bazy danych NoSQL typu klucz-wartoœæ (ang. \textit{key-value}) przechowuj¹ dane w postaci mapy, czyli prostej struktury danych zawieraj¹cej klucz oraz powi¹zan¹ z ni¹ wartoœæ.
+S¹ one u¿yteczne w sytuacji, gdy dane pobierane s¹ przewa¿nie po kluczu g³ównym np. identyfikatorze.
+Bazy klucz-wartoœæ s¹ najprostsze w u¿yciu spoœród wszystkich typów baz NoSQL.
+
+Typowe operacje dostêpne dla u¿ytkownika podobne s¹ do tych, które wykonywaæ mo¿na na hash mapie:
+\begin{itemize}
+\item \textit{insert} - dodanie pary klucz-wartoœæ do bazy.
+W przypadku, gdy klucz istnieje wartoœæ jest nadpisywana,
+\item \textit{lookup} - wyszukanie wartoœci na podstawie klucza,
+\item \textit{delete} - usuniêcie pary klucz-wartoœæ o danym kluczu.
+\end{itemize}
+
+Klucz musi byæ unikalny, gdy¿ jest identyfikatorem, natomiast jako wartoœæ mo¿na przechowywaæ zró¿nicowane struktury danych np. liczby, ci¹gi znaków, obiekty lub listy obiektów.
+Ilustruje to rysunek \ref{key_value}
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=6cm]{Rysunki/Rozdzial2/key_value.pdf}
+	\caption{Struktura danych w bazach NoSQL typu klucz-wartoœæ}
+	\label{key_value}
+\end{figure}
+
+Baza danych nie pilnuje typu przechowywanej wartoœci - jest to zadaniem aplikacji.
+Z uwagi na to, ¿e zawsze u¿ywaj¹ one klucza g³ównego do pobierania wartoœci cechuj¹ siê du¿¹ wydajnoœci¹ oraz umo¿liwiaj¹ ³atw¹ skalowalnoœæ kosztem elastycznoœci i ograniczonych mo¿liwoœci.
+
+Przyk³adami tego typu baz danych s¹ m.in. \textit{Riak}, \textit{Redis}, \textit{Memcached DB}, \textit{Berkley DB}, \textit{HamsterDB}, \textit{Project Voldemort} i wiele innych.     
+
+\subsection{Kolumnowe}
+Kolumnowe bazy danych NoSQL (ang. \textit{column-family}) umo¿liwiaj¹ przechowywanie danych w postaci pogrupowanych rodzin kolumn (ang. \textit{column family}), do których mo¿na odwo³aæ siê za pomoc¹ klucza zwanego kluczem wiersza (ang. \textit{row key}).
+Rodziny kolumn s¹ grupami powi¹zanych ze sob¹ danych, które s¹ czêsto przetwarzane razem.
+Ka¿da z kolumn jest z kolei par¹ klucz-wartoœæ, w której kluczem jest nazwa kolumny (ang. \textit{column key}).
+
+Bazy kolumnowe posiadaj¹ wiêc strukturê dwupoziomowej, zagnie¿d¿onej mapy.
+Mo¿na j¹ porównaæ do tabeli z baz relacyjnych, gdy¿ te¿ jest to zbiór wierszy i kolumn, jednak z t¹ ró¿nic¹, ¿e w bazach kolumnowych ka¿dy wiersz mo¿e posiadaæ ró¿n¹ liczbê kolumn oraz typów przechowywanych wartoœci w zale¿noœci od potrzeb.
+Strukturê danych w bazach kolumnowych ilustruje rysunek \ref{column_family}.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=10cm]{Rysunki/Rozdzial2/column_family.pdf}
+	\caption{Struktura danych w kolumnowych bazach NoSQL}
+	\label{column_family}
+\end{figure}
+
+Zalet¹ takiego podejœcia jest bardzo du¿a elastycznoœæ pod wzglêdem dodawania nowych kolumn w przysz³oœci w zwi¹zku z nieprzewidzianymi zmianami.
+Dodatkowo taka struktura danych umo¿liwia znacznie wydajniejszy odczyt poszczególnych wartoœci z kolumn, gdy¿ nie istnieje potrzeba pobierania ca³ego wiersza i dopiero wyci¹gania z niego wartoœci konkretnej kolumny tak jak ma to miejsce w przypadku baz relacyjnych.
+
+Najbardziej popularne kolumnowe bazy NoSQL to m.in. \textit{Apache Cassandra}, \textit{HBase}, \textit{Google BigTable}, \textit{Hypertable} oraz \textit{Amazon DynamoDB}.
+
+\subsection{Dokumentowe}
+\label{document_db}
+W dokumentowych bazach danych, które nazywane s¹ równie¿ bazami zorientowanymi dokumentowo (ang. \textit{document-oriented databases}) g³ówn¹ jednostk¹ sk³adowania informacji s¹ w³aœnie dokumenty, których formaty mog¹ siê ró¿niæ w zale¿noœci od konkretnej implementacji.
+Najbardziej popularnymi formatami s¹ \textit{XML}, \textit{JSON}, \textit{BSON} oraz \textit{YAML}.
+Dokumenty maj¹ strukturê drzewa, które mo¿e zawieraæ wartoœci, mapy oraz listy. 
+S¹ one grupowane w tzw. kolekcje (ang. \textit{collections}).
+
+Dane przechowywane w dokumentach posiadaj¹ pewn¹ strukturê, która nie jest tak restrykcyjna jak w bazach relacyjnych, dlatego s¹ one nazywane danymi w pewnym stopniu uporz¹dkowanymi (ang. \textit{semi-structured data}).
+Wynika to z tego, ¿e musz¹ one spe³niaæ pewne kryteria wzglêdem struktury dokumentu u¿ywanego formatu.
+Przyk³adowo dokumenty \textit{JSON} musz¹ byæ zgodne ze standardem \textit{JSON}, jednak logiczna struktura danych jest elastyczna.
+Wpisy z ró¿nymi polami mog¹ byæ przechowywane w obrêbie tej samej kolekcji.
+Sposób przechowywanie danych w bazach dokumentowych ilustruje rysunek \ref{document}.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=10cm]{Rysunki/Rozdzial2/document.pdf}
+	\caption{Struktura danych w bazach dokumentowych w formacie JSON}
+	\label{document}
+\end{figure}
+
+Zalet¹ dokumentowych baz danych jest m.in. mo¿liwoœæ tworzenia zapytañ, które s¹ w stanie pobieraæ jedynie wyznaczon¹ czêœæ dokumentu lub te¿ wyszukiwaæ dane po polach zdefiniowanych wewn¹trz struktury (nie tylko po kluczu g³ównym).
+Jest to mo¿liwe dziêki temu, ¿e format, w którym przechowywane s¹ dane jest rozumiany przez system, gdy¿ jest on pewnego rodzaju standardem.
+
+Najbardziej popularne bazy dokumentowe to \textit{MongoDB}, \textit{CouchDB} oraz \textit{MarkLogic}.
+
+\subsection{Grafowe}
+Ostatnim z typów baz danych NoSQL s¹ bazy grafowe. 
+Znacznie ró¿ni¹ siê one od tych, które by³y omawiane do tej pory, gdy¿ nie przechowuj¹ danych w formie agregatów.
+Wykorzystuj¹ one grafy, czyli strukturê danych, która jest zbiorem wierzcho³ków (ang. \textit{nodes}) po³¹czonych krawêdziami (ang. \textit{edges})\cite{graph:2017}.
+Na wierzcho³kach przechowywane s¹ dane, natomiast krawêdzie reprezentuj¹ zale¿noœci pomiêdzy nimi.
+Sposób przechowywania danych w bazach grafowych ilustruje rysunek \ref{graph}.
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=14cm]{Rysunki/Rozdzial2/graph.pdf}
+	\caption{Struktura danych w grafowych bazach NoSQL}
+	\label{graph}
+\end{figure}
+
+Poprzednio omówione typy baz NoSQL powsta³y z myœl¹ o pracy w klastrach, jednak grafowe bazy danych zosta³y stworzone, aby rozwi¹zaæ inny problem relacyjnych baz danych, a mianowicie przechowywanie danych o bardzo z³o¿onych powi¹zaniach.
+
+Umieszczenie informacji na grafie umo¿liwia tworzenie skomplikowanych zale¿noœci pomiêdzy nimi, które mog¹ byæ równie wa¿ne jak same dane \cite{Zollmann:2012}.
+Mog¹ to byæ na przyk³ad preferencje u¿ytkownika serwisu z ksi¹¿kami, relacje pomiêdzy u¿ytkownikami na portalu spo³ecznoœciowym lub dane geograficzne.
+
+Dane uporz¹dkowane w ten sposób umo¿liwiaj¹ tworzenie zapytañ, które by³yby bardzo trudne lub wrêcz niemo¿liwe do zrealizowania w tradycyjnych bazach SQL, a nawet w innych bazach typu NoSQL.
+Do pracy z danymi na grafach wykorzystywane s¹ algorytmy znane z teorii grafów, dlatego umo¿liwiaj¹ one rozwi¹zywanie problemów z wielu dziedzin.
+Mog¹ one znaleŸæ zastosowanie np. w systemach GPS do wyznaczania najkrótszej trasy lub w ró¿nych systemach rekomendacji.
+
+Przyk³adami tego typu baz danych s¹ m.in. \textit{Neo4J}, \textit{FlockDB} oraz \textit{Infinite Graph}. 
+
+\section{Wady}
+Mo¿na zauwa¿yæ, ¿e bazy danych NoSQL prezentuj¹ szerokie spektrum mo¿liwoœci oraz s¹ odpowiedzi¹ na niedoskona³oœci relacyjnych baz danych.
+Nie oznacza to jednak, ¿e s¹ one pod ka¿dym wzglêdem idealne, gdy¿ posiadaj¹ równie¿ kilka istotnych wad.
+
+\subsection{Brak transakcji}
+Brak transakcji, to najwiêksza niedogodnoœæ baz NoSQL w porównaniu do relacyjnych systemów zarz¹dzania danymi.
+Wiele aplikacji wymaga zapewnienia stuprocentowej gwarancji wykonania pewnych operacji na danych, a kluczowym mechanizmem, który to umo¿liwia s¹ w³aœnie transakcje.
+W systemach z tak¹ specyfik¹ czêsto lepiej jest u¿yæ bazy relacyjnej.
+
+Bazy NoSQL równie¿ mog¹ byæ u¿yte do takich celów, jednak z powodu braku transakcji odpowiedzialnoœæ za zapewnienie poprawnoœci operacji na danych musi byæ zapewniona po stronie aplikacji, co mo¿e okazaæ siê skomplikowane w implementacji.
+
+\subsection{Niedojrza³oœæ} 
+Stosunkowo niewielki wiek baz NoSQL w porównaniu do relacyjnych systemów skutkuje tym, ¿e wiele implementacji baz NoSQL jest jeszcze w fazie rozwojowej.
+W wyniku tego mo¿e siê zdarzyæ, ¿e implementacja bazy danych mo¿e posiadaæ jakieœ b³êdy, niektóre funkcjonalnoœci mog¹ byæ dopiero w trakcie tworzenia lub dokumentacja mo¿e byæ zbyt uboga.
+
+Przez to, ¿e relacyjne bazy danych znane s¹ od wielu lat istnieje wielu ekspertów w tej dziedzinie, co przek³ada siê na znacznie wiêksz¹ szansê na znalezienie programistów, którzy bêd¹ znali technologie potrzebne do realizacji danego projektu.
+
+\subsection{Ograniczone funkcjonalnoœci}
+W wyniku uproszczenia pewnych mechanizmów dzia³ania oraz braku wsparcia dla jêzyka SQL, w wiêkszoœci baz NoSQL nie jest mo¿liwe tworzenie tak z³o¿onych zapytañ, jak w bazach relacyjnych.
+S¹ one o wiele prostsze w u¿yciu w aplikacjach typu CRUD (ang. \textit{Create, Read, Update, Delete}).
+Bardziej skomplikowane operacje na danych w wielu typach baz NoSQL wymaga wprowadzenia dodatkowej logiki w aplikacji.
+
+\subsection{Brak wsparcia technicznego}
+Konsekwencj¹ otwartego kodu Ÿród³owego wiêkszoœci baz NoSQL jest brak wsparcia technicznego.
+Wiele firm czêsto jest w stanie zap³aciæ, aby mieæ zapewnione wsparcie techniczne ekspertów w przypadku awarii systemu, jednak przewa¿nie nie jest to mo¿liwe w przypadku wiêkszoœci baz danych typu NoSQL. Czêsto s¹ one tworzone przez ma³e firmy, które nie s¹ w stanie zapewniæ 24-godzinnego wsparcia technicznego tak jak firmy produkuj¹ce relacyjne bazy danych, takie jak np. \textit{Oracle}, \textit{IBM} czy \textit{Microsoft}.
+
+\section{Podsumowanie}
+Z pewnoœci¹ mo¿na stwierdziæ, ¿e bazy danych typu NoSQL nie s¹ odpowiedzi¹ na ka¿dy problem, z którym spotkaæ siê mog¹ systemy, których zadaniem jest przechowywanie i udostêpnianie danych.
+Tym bardziej nie jest prawd¹, ¿e bazy NoSQL s¹ pod ka¿dym wzglêdem lepsze od tradycyjnych baz relacyjnych.
+S¹ one jedynie pewnego rodzaju alternatyw¹ oraz dodatkowym narzêdziem, które powinno byæ u¿ywane w okreœlonych sytuacjach.
+
+Bazy relacyjne oraz bazy NoSQL uzupe³niaj¹ siê nawzajem.
+Bardzo wa¿ne jest dobranie odpowiedniego typu bazy do charakterystyki danego projektu.
+Takie podejœcie do tworzenia aplikacji nosi nazwê \textit{Polyglot Persistence}.
+
+Czasem mo¿liwe jest równie¿ po³¹czenie zalet obu typów baz danych i u¿ycie ich razem w obrêbie jednej aplikacji.
+Architektura, która umo¿liwia tworzenie aplikacji w ten sposób nosi nazwê CQRS i zostanie zaprezentowana w rozdziale \ref{chapter_3}.

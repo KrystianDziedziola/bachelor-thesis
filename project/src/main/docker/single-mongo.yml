@@ -1,0 +1,44 @@
+version: '2'
+services:
+  inz-app:
+    image: edu.uz/inz:0.0.1-SNAPSHOT
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgresql
+    environment:
+      - READ_SOURCE=nosql
+#    mem_limit: 1G
+#    cpu_shares: 50
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: '0.5'
+#          memory: 2m
+#        reservations:
+#          cpus: '0.25'
+#          memory: 2m
+
+  postgresql:
+    image: postgres
+    ports:
+     - "5432:5432"
+    environment:
+     - POSTGRES_PASSWORD=postgres
+     - POSTGRES_USER=postgres
+     - POSTGRES_DB=inz
+#     TODO: limit resources - może bez 'deploy'
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: '0.1'
+#          memory: 128M
+
+  mongodb:
+    image: mongo
+    ports:
+     - "27017:27017"
+    environment:
+     - MONGODB_USER=mongo
+     - MONGODB_PASS=mongo
+     - MONGODB_DATABASE=inz
